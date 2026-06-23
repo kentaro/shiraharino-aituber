@@ -102,8 +102,11 @@ fi
 # --- 4) chromium --kiosk で配信ページを描画（follow mode） ------------
 "$CHROME" \
   --kiosk --no-first-run --no-default-browser-check --disable-infobars \
-  --disable-translate --disable-features=Translate --no-sandbox \
+  --disable-translate --disable-features=Translate \
+  --no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox \
+  --disable-dev-shm-usage --no-zygote \
   --use-gl=swiftshader --disable-gpu --mute-audio \
+  --disable-crash-reporter --disable-breakpad \
   --window-size="${WIDTH},${HEIGHT}" --window-position=0,0 \
   --user-data-dir="$VAR/chrome-profile" \
   --app="http://127.0.0.1:${WEB_PORT}/index.html?follow=1" \
