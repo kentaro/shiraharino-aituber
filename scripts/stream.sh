@@ -98,8 +98,17 @@ PIDS+=($!)
 sleep 4
 
 # --- 5) ffmpeg で画面＋音声をキャプチャ → 配信/録画 -------------------
+# 音声: 仮想シンクの monitor が取れればそれを、無ければ無音にフォールバック
+#       （コンテナ等で PulseAudio が使えなくても映像配信は止めない）
+if pactl list sources short 2>/dev/null | grep -q "${SINK}.monitor"; then
+  AUDIO_IN=( -f pulse -i "${SINK}.monitor" )
+  echo "[stream] audio: ${SINK}.monitor"
+else
+  AUDIO_IN=( -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 )
+  echo "[stream] audio: (none) -> 無音にフォールバック"
+fi
 COMMON_IN=( -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
-            -f pulse -i "${SINK}.monitor" )
+            "${AUDIO_IN[@]}" )
 COMMON_ENC=( -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
              -c:a aac -b:a "$ABR" -ar 44100 )
 
