@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>白羽リノ 観測スタジオ — 24/7 Live</title>
+  <link rel="stylesheet" href="broadcast.css">
+</head>
+<body>
+  <!-- ===== 配信ステージ（1280x720固定） ===== -->
+  <div id="stage" class="stage">
+
+    <!-- 背景（配信ルーム） -->
+    <div class="bg" id="bg"></div>
+
+    <!-- キャラクター（透過WebMをネイティブ再生＋口オーバーレイ。MotionPNGTuber方式） -->
+    <div class="char" id="char">
+      <video id="base-video" class="char-video" playsinline muted loop preload="auto"></video>
+      <img id="blink" class="blink" src="assets/shiraharino/eyes_closed.png" alt="">
+      <canvas id="mouth-canvas" class="mouth-canvas" width="640" height="640"></canvas>
+    </div>
+
+    <!-- ===== 番組オーバーレイ ===== -->
+    <!-- 上部バー：番組タイトル -->
+    <header class="topbar">
+      <div class="title-block">
+        <div class="title-ja">白羽リノ 観測スタジオ</div>
+        <div class="title-en">SHIRAHARINO OBSERVATION STUDIO</div>
+      </div>
+      <div class="live-block">
+        <span class="live-dot"></span><span class="live-text">LIVE</span>
+        <span class="live-sub">24 / 365</span>
+      </div>
+    </header>
+
+    <!-- 時計（右上） -->
+    <div class="clock" id="clock">
+      <div class="clock-time" id="clock-time">--:--:--</div>
+      <div class="clock-date" id="clock-date">----.--.--</div>
+    </div>
+
+    <!-- いま話しているテーマ（左・ロウアーサード上） -->
+    <div class="theme-chip" id="theme-chip">
+      <span class="theme-label">NOW</span>
+      <span class="theme-text" id="theme-text">起動中…</span>
+    </div>
+
+    <!-- 音声レベルメーター（テーマ下） -->
+    <div class="vu" id="vu"><div class="vu-fill" id="vu-fill"></div></div>
+
+    <!-- 字幕（ロウアーサード） -->
+    <div class="subtitle" id="subtitle">
+      <div class="subtitle-name">白羽リノ</div>
+      <div class="subtitle-text" id="subtitle-text"></div>
+    </div>
+
+    <!-- クレジット（右下） -->
+    <div class="credit" id="credit">VOICEVOX:冥鳴ひまり</div>
+
+    <!-- 起動オーバーレイ（ローカルのブラウザ手動再生用。kioskでは自動非表示） -->
+    <div class="boot" id="boot">
+      <button id="boot-btn">▶ 配信を開始</button>
+      <p class="boot-hint">box の kiosk 起動では自動で開始します</p>
+    </div>
+  </div>
+
+  <script src="broadcast.js"></script>
+</body>
+</html>

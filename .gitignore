@@ -1,0 +1,21 @@
+# 依存
+node_modules/
+
+# 実行時の生成物
+var/
+**/chrome-profile/
+*.log
+
+# 秘密情報（絶対にコミットしない）
+.env
+.env.*
+*.key
+secrets/
+
+# OS
+.DS_Store
+
+# content_loop が生成する音声（seed 以外）。seed は明示的に追跡する
+web/segments/*.wav
+web/segments/*.mp3
+!web/segments/seed_*.wav

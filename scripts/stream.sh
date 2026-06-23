@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# =========================================================================
+# 白羽リノ AITuber — 配信パイプライン（単一サーバ完結）
+#
+#   HTML/CSS(配信ページ) → Xvfb(仮想ディスプレイ) → chromium --kiosk
+#     → ffmpeg(x11grab + PulseAudio) → 録画 or YouTube Live(rtmps)
+#
+# すべて1ホスト内で完結。OBS不要。落ちても supervisor.sh が再起動する。
+#
+# 環境変数:
+#   MODE         record | live           (default: record)
+#   STREAM_KEY   YouTube ストリームキー   (live 時必須)
+#   YT_URL       RTMPS ingest            (default: rtmps://a.rtmps.youtube.com/live2)
+#   WIDTH/HEIGHT 解像度                   (default: 1280x720)
+#   FPS          フレームレート           (default: 30)
+#   DISPLAY_NUM  Xvfb ディスプレイ番号    (default: 99)
+#   WEB_PORT     配信ページの待受ポート   (default: 8780)
+#   OUT_FILE     record 時の出力          (default: var/record.mp4)
+#   DURATION     record 時の尺(秒/空=無限) (default: 20)
+#   CHROME       chromium バイナリパス    (default: 自動検出)
+#   VBR/ABR      映像/音声ビットレート     (default: 4500k / 128k)
+# =========================================================================
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WEB="$ROOT/web"
+VAR="$ROOT/var"; mkdir -p "$VAR"
+
+MODE="${MODE:-record}"
+WIDTH="${WIDTH:-1280}"; HEIGHT="${HEIGHT:-720}"; FPS="${FPS:-30}"
+DISPLAY_NUM="${DISPLAY_NUM:-99}"
+WEB_PORT="${WEB_PORT:-8780}"
+OUT_FILE="${OUT_FILE:-$VAR/record.mp4}"
+DURATION="${DURATION:-20}"
+YT_URL="${YT_URL:-rtmps://a.rtmps.youtube.com/live2}"
+STREAM_KEY="${STREAM_KEY:-}"
+VBR="${VBR:-4500k}"; ABR="${ABR:-128k}"
+SINK="rino_sink"
+
+# chromium 自動検出（Playwright 同梱を優先）
+CHROME="${CHROME:-}"
+if [[ -z "$CHROME" ]]; then
+  for c in \
+    /opt/data/.cache/ms-playwright/chromium-*/chrome-linux/chrome \
+    "$HOME/.cache/ms-playwright/chromium-*/chrome-linux/chrome" \
+    "$(command -v chromium 2>/dev/null || true)" \
+    "$(command -v chromium-browser 2>/dev/null || true)" \
+    "$(command -v google-chrome 2>/dev/null || true)"; do
+    for g in $c; do [[ -x "$g" ]] && CHROME="$g" && break; done
+    [[ -n "$CHROME" ]] && break
+  done
+fi
+[[ -z "$CHROME" ]] && { echo "[stream] chromium not found. set CHROME=..." >&2; exit 1; }
+
+PIDS=()
+cleanup() {
+  echo "[stream] cleanup..."
+  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+  pkill -f "Xvfb :$DISPLAY_NUM" 2>/dev/null || true
+  pactl unload-module module-null-sink 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+echo "[stream] mode=$MODE  ${WIDTH}x${HEIGHT}@${FPS}  chrome=$CHROME"
+
+# --- 1) 配信ページを HTTP 配信 ----------------------------------------
+( cd "$WEB" && exec python3 -m http.server "$WEB_PORT" --bind 127.0.0.1 ) \
+  >"$VAR/web.log" 2>&1 &
+PIDS+=($!)
+sleep 1
+
+# --- 2) Xvfb 仮想ディスプレイ -----------------------------------------
+Xvfb ":$DISPLAY_NUM" -screen 0 "${WIDTH}x${HEIGHT}x24" -nolisten tcp \
+  >"$VAR/xvfb.log" 2>&1 &
+PIDS+=($!)
+export DISPLAY=":$DISPLAY_NUM"
+sleep 1.5
+
+# --- 3) PulseAudio + 仮想シンク（ブラウザ音声を ffmpeg で取得） -------
+export PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-$VAR/pulse}"
+pulseaudio --start --exit-idle-time=-1 >"$VAR/pulse.log" 2>&1 || true
+sleep 1
+pactl load-module module-null-sink sink_name="$SINK" \
+  sink_properties=device.description=RinoSink >/dev/null 2>&1 || true
+pactl set-default-sink "$SINK" 2>/dev/null || true
+
+# --- 4) chromium --kiosk で配信ページを描画 ---------------------------
+"$CHROME" \
+  --kiosk --no-first-run --no-default-browser-check --disable-infobars \
+  --disable-translate --disable-features=Translate --no-sandbox \
+  --autoplay-policy=no-user-gesture-required \
+  --use-gl=swiftshader --disable-gpu \
+  --window-size="${WIDTH},${HEIGHT}" --window-position=0,0 \
+  --user-data-dir="$VAR/chrome-profile" \
+  --app="http://127.0.0.1:${WEB_PORT}/index.html?autostart=1" \
+  >"$VAR/chrome.log" 2>&1 &
+PIDS+=($!)
+sleep 4
+
+# --- 5) ffmpeg で画面＋音声をキャプチャ → 配信/録画 -------------------
+COMMON_IN=( -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
+            -f pulse -i "${SINK}.monitor" )
+COMMON_ENC=( -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
+             -c:a aac -b:a "$ABR" -ar 44100 )
+
+if [[ "$MODE" == "live" ]]; then
+  [[ -z "$STREAM_KEY" ]] && { echo "[stream] live は STREAM_KEY 必須" >&2; exit 1; }
+  echo "[stream] → YouTube Live (rtmps)"
+  ffmpeg -hide_banner -loglevel warning "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
+    -f flv "${YT_URL}/${STREAM_KEY}"
+else
+  echo "[stream] → record $OUT_FILE (duration=${DURATION:-inf})"
+  DUR_ARG=(); [[ -n "$DURATION" ]] && DUR_ARG=( -t "$DURATION" )
+  ffmpeg -hide_banner -loglevel warning -y "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
+    "${DUR_ARG[@]}" "$OUT_FILE"
+fi

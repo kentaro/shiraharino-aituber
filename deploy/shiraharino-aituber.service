@@ -1,0 +1,22 @@
+# systemd user unit 例（box で systemd-user が使える場合）
+#   配置: ~/.config/systemd/user/shiraharino-aituber.service
+#   有効化: systemctl --user enable --now shiraharino-aituber
+#   本番配信にする時は Environment で MODE=live と STREAM_KEY を設定
+[Unit]
+Description=Shiraharino 24/7 AITuber (broadcast page -> Xvfb -> ffmpeg -> YouTube)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/shiraharino-aituber
+Environment=MODE=record
+Environment=DURATION=
+# 本番:
+# Environment=MODE=live
+# Environment=STREAM_KEY=xxxx-xxxx-xxxx-xxxx
+ExecStart=/usr/bin/env bash %h/shiraharino-aituber/scripts/run.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
