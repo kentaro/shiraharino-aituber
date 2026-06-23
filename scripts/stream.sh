@@ -48,14 +48,16 @@ FIFO="$VAR/audio.fifo"
 # chromium 自動検出（Playwright 同梱を優先）
 CHROME="${CHROME:-}"
 if [[ -z "$CHROME" ]]; then
+  # Playwright は版により chrome-linux / chrome-linux64 の両方がある。新しい版を優先。
   for c in \
+    /opt/data/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
     /opt/data/.cache/ms-playwright/chromium-*/chrome-linux/chrome \
+    "$HOME/.cache/ms-playwright/chromium-*/chrome-linux64/chrome" \
     "$HOME/.cache/ms-playwright/chromium-*/chrome-linux/chrome" \
     "$(command -v chromium 2>/dev/null || true)" \
     "$(command -v chromium-browser 2>/dev/null || true)" \
     "$(command -v google-chrome 2>/dev/null || true)"; do
-    for g in $c; do [[ -x "$g" ]] && CHROME="$g" && break; done
-    [[ -n "$CHROME" ]] && break
+    for g in $c; do [[ -x "$g" ]] && CHROME="$g"; done
   done
 fi
 [[ -z "$CHROME" ]] && { echo "[stream] chromium not found. set CHROME=..." >&2; exit 1; }
