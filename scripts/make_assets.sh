@@ -1,27 +1,18 @@
 #!/usr/bin/env bash
-# =========================================================================
 # キャラクター・アセットの再生成（再現可能なビルド）
-#
-#  1) 透過WebM: グリーンスクリーン動画 → クロマキー → グリーンクランプ
-#       （G' = min(G, max(R,B)) で緑スピルだけ中和。白を桃色化しない）
-#  2) 閉じ目スプライト: 閉じ目ソース画像から目バンドのみをフェザー抽出
-#
-#  閉じ目ソース(_closed_source.png)は gemini-2.5-flash-image で
-#  「目を閉じた版」を生成したもの（生成プロンプトは docs/ASSETS.md 参照）。
-# =========================================================================
+#  1) 静止透過PNG character_base.png: グリーンスクリーン素体 →
+#       クロマキー＋グリーンクランプ(G'=min(G,max(R,B)))で緑だけ中和(白を桃化しない)。
+#       元動画はほぼ静止のため動画ではなく静止画にして軽量化(ソフトGLでも滑らか)。
+#  2) 閉じ目スプライト eyes_closed.png: 閉じ目ソースから目バンドのみフェザー抽出。
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../web/assets/shiraharino" && pwd)"
 cd "$DIR"
-
-echo "[assets] 1) 透過WebM（クロマキー＋グリーンクランプ）"
-ffmpeg -y -loglevel error -i shiraharino_mouthless_h264.mp4 \
-  -vf "chromakey=0x11f80e:0.14:0.10,format=rgba,\
-geq=r='r(X,Y)':g='min(g(X,Y),max(r(X,Y),b(X,Y)))':b='b(X,Y)':a='alpha(X,Y)',\
-format=yuva420p" \
-  -c:v libvpx-vp9 -pix_fmt yuva420p -b:v 2.5M -auto-alt-ref 0 \
-  -metadata:s:v:0 alpha_mode=1 shiraharino_mouthless.webm
-echo "[assets]   -> shiraharino_mouthless.webm"
-
+echo "[assets] 1) 静止透過PNG（クロマキー＋グリーンクランプ）"
+ffmpeg -y -loglevel error -i shiraharino_mouthless_h264.mp4 -frames:v 1 \
+  -vf "scale=720:720,chromakey=0x11f80e:0.14:0.10,format=rgba,\
+geq=r='r(X,Y)':g='min(g(X,Y),max(r(X,Y),b(X,Y)))':b='b(X,Y)':a='alpha(X,Y)'" \
+  character_base.png
+echo "[assets]   -> character_base.png"
 echo "[assets] 2) 閉じ目スプライト（目バンドのみ・フェザー）"
 python3 - <<'PY'
 from PIL import Image, ImageDraw, ImageFilter

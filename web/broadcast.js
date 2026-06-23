@@ -3,8 +3,6 @@
   // src/broadcast.ts
   var CFG = {
     assetBase: "assets/shiraharino/",
-    charVideo: "shiraharino_mouthless.webm",
-    // 緑抜き済 透過WebM
     track: "mouth_track.json",
     mouth: { closed: "mouth/closed.png", half: "mouth/half.png", open: "mouth/open.png" },
     lip: {
@@ -18,7 +16,7 @@
   };
   var $ = (id) => document.getElementById(id);
   var charEl = $("char");
-  var video = $("base-video");
+  var charBase = $("char-base");
   var blinkEl = $("blink");
   var mouthCanvas = $("mouth-canvas");
   var mctx = mouthCanvas.getContext("2d");
@@ -43,6 +41,7 @@
   var started = false;
   var rafStarted = false;
   var followMode = new URLSearchParams(location.search).get("follow") === "1";
+  var lipsyncLagMs = parseInt(new URLSearchParams(location.search).get("lag") || "0", 10) || 0;
   var np = null;
   var npId = "";
   var blinkValue = 0;
@@ -69,17 +68,17 @@
     mouthImg.closed = await loadImage(CFG.assetBase + CFG.mouth.closed);
     mouthImg.half = await loadImage(CFG.assetBase + CFG.mouth.half);
     mouthImg.open = await loadImage(CFG.assetBase + CFG.mouth.open);
-    video.src = CFG.assetBase + CFG.charVideo + "?v=6";
-    await new Promise((res) => {
-      if (video.readyState >= 2) return res();
-      video.onloadeddata = () => res();
-    });
+    if (!charBase.complete) {
+      await new Promise((res) => {
+        charBase.onload = () => res();
+        charBase.onerror = () => res();
+      });
+    }
   }
   function currentFrame() {
     if (!track.length) return null;
-    const idx = Math.floor((video.currentTime || 0) * trackFps) % track.length;
-    const f = track[idx];
-    return f && f.valid ? f : null;
+    for (const f of track) if (f && f.valid) return f;
+    return null;
   }
   function updateMouthState(now) {
     if (now - lastMouthChange < CFG.lip.minChangeMs) return;
@@ -107,7 +106,7 @@
   function sampleEnvelope() {
     let rms = 0;
     if (np && np.env && np.env.length) {
-      const pos = Date.now() - np.t_start;
+      const pos = Date.now() - np.t_start - lipsyncLagMs;
       if (pos >= 0 && pos < np.dur_ms) {
         const i = Math.floor(pos / (np.env_dt_ms || 50));
         rms = np.env[Math.min(i, np.env.length - 1)] || 0;
@@ -264,13 +263,6 @@
     if (started) return;
     started = true;
     boot.classList.add("hidden");
-    video.loop = true;
-    await video.play().catch(() => {
-    });
-    video.addEventListener("pause", () => {
-      if (started) video.play().catch(() => {
-      });
-    });
     scheduleNextBlink(performance.now());
     if (!rafStarted) {
       rafStarted = true;
@@ -297,13 +289,6 @@
     }
     started = true;
     boot.classList.add("hidden");
-    video.loop = true;
-    await video.play().catch(() => {
-    });
-    video.addEventListener("pause", () => {
-      if (started) video.play().catch(() => {
-      });
-    });
     scheduleNextBlink(performance.now());
     if (!rafStarted) {
       rafStarted = true;
@@ -316,6 +301,10 @@
   async function init() {
     setInterval(tickClock, 250);
     tickClock();
+    try {
+      await document.fonts.ready;
+    } catch {
+    }
     try {
       await loadAssets();
     } catch (e) {

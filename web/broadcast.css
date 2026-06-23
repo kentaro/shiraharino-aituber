@@ -1,4 +1,21 @@
 /* ===== 白羽リノ 観測スタジオ — 配信用Webページ ===== */
+/* 日本語フォントを埋め込み、OS(box/Mac)に依存せず同じ見た目にする */
+@font-face {
+  font-family: "RinoJP";
+  src: url("assets/fonts/NotoSansJP-500.woff2") format("woff2");
+  font-weight: 500; font-display: swap;
+}
+@font-face {
+  font-family: "RinoJP";
+  src: url("assets/fonts/NotoSansJP-700.woff2") format("woff2");
+  font-weight: 700; font-display: swap;
+}
+@font-face {
+  font-family: "RinoJP";
+  src: url("assets/fonts/NotoSansJP-800.woff2") format("woff2");
+  font-weight: 800; font-display: swap;
+}
+
 :root {
   --blue: #7fb8e6;
   --blue-deep: #4a86c5;
@@ -14,7 +31,7 @@ html, body {
   width: 100%; height: 100%;
   background: #eaf3fb;
   overflow: hidden;
-  font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
+  font-family: "RinoJP", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", system-ui, sans-serif;
   color: var(--ink);
 }
 
@@ -47,11 +64,11 @@ html, body {
   will-change: transform;
   filter: drop-shadow(0 10px 18px rgba(74, 134, 197, 0.28));
 }
-.char-video, .mouth-canvas, .blink {
+.char-base, .mouth-canvas, .blink {
   position: absolute; inset: 0;
   width: 100%; height: 100%;
 }
-.char-video { object-fit: contain; }
+.char-base { object-fit: contain; }
 .mouth-canvas { pointer-events: none; }
 .blink { object-fit: contain; opacity: 0; pointer-events: none; }
 
@@ -166,11 +183,14 @@ html, body {
   font-size: 25px; font-weight: 700; line-height: 1.4;
   color: var(--ink);
   min-height: 35px;
+  /* 2行で打ち切り、はみ出してクレジット等と被らないように */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 /* ===== クレジット ===== */
 .credit {
-  position: absolute; right: 18px; bottom: 100px;
+  position: absolute; right: 24px; bottom: 150px;
   font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
   color: var(--blue-deep);
   background: rgba(255,255,255,0.7);

@@ -101,25 +101,26 @@ else
 fi
 
 # --- 4) chromium --kiosk で配信ページを描画（follow mode） ------------
+LIPSYNC_LAG_MS="${LIPSYNC_LAG_MS:-1800}"   # 口パク遅延(ms)。声と口を合わせる
 "$CHROME" \
-  --kiosk --no-first-run --no-default-browser-check --disable-infobars \
-  --disable-translate --disable-features=Translate \
+  --kiosk --start-fullscreen --no-first-run --no-default-browser-check \
+  --disable-infobars --disable-translate --lang=ja \
+  --disable-features=Translate,TranslateUI,TranslateSubFrames \
   --no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox \
   --disable-dev-shm-usage --no-zygote \
   --use-gl=swiftshader --disable-gpu --mute-audio \
   --disable-crash-reporter --disable-breakpad \
   --window-size="${WIDTH},${HEIGHT}" --window-position=0,0 \
   --user-data-dir="$VAR/chrome-profile" \
-  --app="http://127.0.0.1:${WEB_PORT}/index.html?follow=1" \
+  --app="http://127.0.0.1:${WEB_PORT}/index.html?follow=1&lag=${LIPSYNC_LAG_MS}" \
   >"$VAR/chrome.log" 2>&1 &
 PIDS+=($!)
 sleep 4
 
 # --- 5) ffmpeg で画面(x11grab)＋音声(FIFO)をキャプチャ → 配信/録画 ----
-# 映像/音声の同期補償。音声はフィーダ→FIFO→ffmpeg のパイプライン分だけ遅れて
-# 出力されるため、映像を VIDEO_DELAY 秒ぶん遅らせて口パクと音声を一致させる。
-VIDEO_DELAY="${VIDEO_DELAY:-1.8}"
-COMMON_IN=( -itsoffset "$VIDEO_DELAY" -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
+# 同期は「ページ側の口パク遅延(LIPSYNC_LAG_MS)」で取る。映像は遅らせない
+# （映像を itsoffset すると配信冒頭が黒くなるため）。
+COMMON_IN=( -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" )
 COMMON_ENC=( -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
              -c:a aac -b:a "$ABR" -ar 44100 )

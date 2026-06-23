@@ -37,7 +37,6 @@ interface Playlist {
 
 const CFG = {
   assetBase: "assets/shiraharino/",
-  charVideo: "shiraharino_mouthless.webm", // 緑抜き済 透過WebM
   track: "mouth_track.json",
   mouth: { closed: "mouth/closed.png", half: "mouth/half.png", open: "mouth/open.png" },
   lip: {
@@ -54,7 +53,7 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
 
 const charEl = $("char");
-const video = $<HTMLVideoElement>("base-video");
+const charBase = $<HTMLImageElement>("char-base");
 const blinkEl = $<HTMLImageElement>("blink");
 const mouthCanvas = $<HTMLCanvasElement>("mouth-canvas");
 const mctx = mouthCanvas.getContext("2d")!;
@@ -85,6 +84,9 @@ let rafStarted = false;
 // follow mode（別経路ミックス用）: 音声は外部フィーダが鳴らし、
 // 配信ページは nowplaying.json の env で口パクする（音声再生・解析なし）
 const followMode = new URLSearchParams(location.search).get("follow") === "1";
+// 口パク遅延(ms)。音声は フィーダ→FIFO→ffmpeg のパイプライン分だけ遅れて
+// 配信に乗るので、口パクを同じだけ遅らせて声と一致させる（?lag=1800 等）。
+const lipsyncLagMs = parseInt(new URLSearchParams(location.search).get("lag") || "0", 10) || 0;
 interface NowPlaying {
   id: string;
   t_start: number;   // epoch ms
@@ -127,18 +129,17 @@ async function loadAssets(): Promise<void> {
   mouthImg.closed = await loadImage(CFG.assetBase + CFG.mouth.closed);
   mouthImg.half = await loadImage(CFG.assetBase + CFG.mouth.half);
   mouthImg.open = await loadImage(CFG.assetBase + CFG.mouth.open);
-  video.src = CFG.assetBase + CFG.charVideo + "?v=6";
-  await new Promise<void>((res) => {
-    if (video.readyState >= 2) return res();
-    video.onloadeddata = () => res();
-  });
+  // 静止透過PNG（元動画はほぼ静止のため動画デコードを廃止＝軽量）
+  if (!charBase.complete) {
+    await new Promise<void>((res) => { charBase.onload = () => res(); charBase.onerror = () => res(); });
+  }
 }
 
+// 口の位置はほぼ一定なので track の最初の有効フレームの quad を使う
 function currentFrame(): TrackFrame | null {
   if (!track.length) return null;
-  const idx = Math.floor((video.currentTime || 0) * trackFps) % track.length;
-  const f = track[idx];
-  return f && f.valid ? f : null;
+  for (const f of track) if (f && f.valid) return f;
+  return null;
 }
 
 // ---- 口パク状態 ------------------------------------------------------
@@ -171,7 +172,7 @@ function sampleAudio(): void {
 function sampleEnvelope(): void {
   let rms = 0;
   if (np && np.env && np.env.length) {
-    const pos = Date.now() - np.t_start;
+    const pos = Date.now() - np.t_start - lipsyncLagMs;
     if (pos >= 0 && pos < np.dur_ms) {
       const i = Math.floor(pos / (np.env_dt_ms || 50));
       rms = np.env[Math.min(i, np.env.length - 1)] || 0;
@@ -360,11 +361,6 @@ async function startFollow(): Promise<void> {
   if (started) return;
   started = true;
   boot.classList.add("hidden");
-  video.loop = true;
-  await video.play().catch(() => {});
-  video.addEventListener("pause", () => {
-    if (started) video.play().catch(() => {});
-  });
   scheduleNextBlink(performance.now());
   if (!rafStarted) {
     rafStarted = true;
@@ -397,13 +393,6 @@ async function start(): Promise<void> {
   started = true;
   boot.classList.add("hidden");
 
-  // 動画を確実にループ再生（停止していたら再生し直す）
-  video.loop = true;
-  await video.play().catch(() => {});
-  video.addEventListener("pause", () => {
-    if (started) video.play().catch(() => {});
-  });
-
   scheduleNextBlink(performance.now());
   if (!rafStarted) {
     rafStarted = true;
@@ -419,6 +408,12 @@ async function start(): Promise<void> {
 async function init(): Promise<void> {
   setInterval(tickClock, 250);
   tickClock();
+  // 埋め込みフォントの読込を待ってから描画開始（フォールバック表示を防ぐ）
+  try {
+    await (document as Document & { fonts: { ready: Promise<unknown> } }).fonts.ready;
+  } catch {
+    /* fonts API 無し環境でも続行 */
+  }
   try {
     await loadAssets();
   } catch (e) {
