@@ -116,7 +116,10 @@ PIDS+=($!)
 sleep 4
 
 # --- 5) ffmpeg で画面(x11grab)＋音声(FIFO)をキャプチャ → 配信/録画 ----
-COMMON_IN=( -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
+# 映像/音声の同期補償。音声はフィーダ→FIFO→ffmpeg のパイプライン分だけ遅れて
+# 出力されるため、映像を VIDEO_DELAY 秒ぶん遅らせて口パクと音声を一致させる。
+VIDEO_DELAY="${VIDEO_DELAY:-1.8}"
+COMMON_IN=( -itsoffset "$VIDEO_DELAY" -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" )
 COMMON_ENC=( -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
              -c:a aac -b:a "$ABR" -ar 44100 )
