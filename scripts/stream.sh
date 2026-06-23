@@ -93,7 +93,8 @@ if [[ "$RUN_FEEDER" == "1" ]]; then
   # フィーダは FIFO に書き込み（読み手= ffmpeg が開くまでブロック）
   ( cd "$ROOT" && SR=44100 CH=2 python3 scripts/audio_feeder.py > "$FIFO" 2>"$VAR/feeder.log" ) &
   PIDS+=($!)
-  AUDIO_IN=( -f s16le -ar 44100 -ac 2 -i "$FIFO" )
+  # 壁時計タイムスタンプで取り込み → x11grab(同じく壁時計)と同期する
+  AUDIO_IN=( -use_wallclock_as_timestamps 1 -f s16le -ar 44100 -ac 2 -i "$FIFO" )
   echo "[stream] audio: feeder -> FIFO (PulseAudio不要)"
 else
   echo "[stream] audio: (none) 無音"
