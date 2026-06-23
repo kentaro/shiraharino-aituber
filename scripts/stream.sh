@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 # =========================================================================
-# 白羽リノ AITuber — 配信パイプライン（単一サーバ完結）
+# 白羽リノ AITuber — 配信パイプライン（単一サーバ完結・音声別経路）
 #
-#   HTML/CSS(配信ページ) → Xvfb(仮想ディスプレイ) → chromium --kiosk
-#     → ffmpeg(x11grab + PulseAudio) → 録画 or YouTube Live(rtmps)
+#   映像: HTML/CSS(配信ページ follow mode) → Xvfb → chromium --kiosk
+#         → ffmpeg(x11grab)
+#   音声: audio_feeder.py が playlist の wav を PCM で FIFO に供給
+#         → ffmpeg がそれを音声入力として多重化
+#   出力: 録画(mp4) or YouTube Live(rtmps)
 #
-# すべて1ホスト内で完結。OBS不要。落ちても supervisor.sh が再起動する。
+#   ★ブラウザ音声を一切キャプチャしない（PulseAudio不要）。
+#     ページは nowplaying.json の env で口パクするので、映像と音声は
+#     壁時計で完全同期する。Linux/Mac どちらでも動く。
+#
+# すべて1ホスト内で完結。OBS不要。落ちても run.sh が再起動する。
 #
 # 環境変数:
 #   MODE         record | live           (default: record)
@@ -35,7 +42,8 @@ DURATION="${DURATION:-20}"
 YT_URL="${YT_URL:-rtmps://a.rtmps.youtube.com/live2}"
 STREAM_KEY="${STREAM_KEY:-}"
 VBR="${VBR:-4500k}"; ABR="${ABR:-128k}"
-SINK="rino_sink"
+RUN_FEEDER="${RUN_FEEDER:-1}"   # 0 にすると音声フィーダを起動しない（無音）
+FIFO="$VAR/audio.fifo"
 
 # chromium 自動検出（Playwright 同梱を優先）
 CHROME="${CHROME:-}"
@@ -57,7 +65,7 @@ cleanup() {
   echo "[stream] cleanup..."
   for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
   pkill -f "Xvfb :$DISPLAY_NUM" 2>/dev/null || true
-  pactl unload-module module-null-sink 2>/dev/null || true
+  rm -f "$FIFO" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -76,37 +84,32 @@ PIDS+=($!)
 export DISPLAY=":$DISPLAY_NUM"
 sleep 1.5
 
-# --- 3) PulseAudio + 仮想シンク（ブラウザ音声を ffmpeg で取得） -------
-export PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-$VAR/pulse}"
-pulseaudio --start --exit-idle-time=-1 >"$VAR/pulse.log" 2>&1 || true
-sleep 1
-pactl load-module module-null-sink sink_name="$SINK" \
-  sink_properties=device.description=RinoSink >/dev/null 2>&1 || true
-pactl set-default-sink "$SINK" 2>/dev/null || true
+# --- 3) 音声フィーダ（別経路）: playlist の wav を PCM で FIFO に供給 --
+AUDIO_IN=( -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 )
+if [[ "$RUN_FEEDER" == "1" ]]; then
+  rm -f "$FIFO"; mkfifo "$FIFO"
+  # フィーダは FIFO に書き込み（読み手= ffmpeg が開くまでブロック）
+  ( cd "$ROOT" && SR=44100 CH=2 python3 scripts/audio_feeder.py > "$FIFO" 2>"$VAR/feeder.log" ) &
+  PIDS+=($!)
+  AUDIO_IN=( -f s16le -ar 44100 -ac 2 -i "$FIFO" )
+  echo "[stream] audio: feeder -> FIFO (PulseAudio不要)"
+else
+  echo "[stream] audio: (none) 無音"
+fi
 
-# --- 4) chromium --kiosk で配信ページを描画 ---------------------------
+# --- 4) chromium --kiosk で配信ページを描画（follow mode） ------------
 "$CHROME" \
   --kiosk --no-first-run --no-default-browser-check --disable-infobars \
   --disable-translate --disable-features=Translate --no-sandbox \
-  --autoplay-policy=no-user-gesture-required \
-  --use-gl=swiftshader --disable-gpu \
+  --use-gl=swiftshader --disable-gpu --mute-audio \
   --window-size="${WIDTH},${HEIGHT}" --window-position=0,0 \
   --user-data-dir="$VAR/chrome-profile" \
-  --app="http://127.0.0.1:${WEB_PORT}/index.html?autostart=1" \
+  --app="http://127.0.0.1:${WEB_PORT}/index.html?follow=1" \
   >"$VAR/chrome.log" 2>&1 &
 PIDS+=($!)
 sleep 4
 
-# --- 5) ffmpeg で画面＋音声をキャプチャ → 配信/録画 -------------------
-# 音声: 仮想シンクの monitor が取れればそれを、無ければ無音にフォールバック
-#       （コンテナ等で PulseAudio が使えなくても映像配信は止めない）
-if pactl list sources short 2>/dev/null | grep -q "${SINK}.monitor"; then
-  AUDIO_IN=( -f pulse -i "${SINK}.monitor" )
-  echo "[stream] audio: ${SINK}.monitor"
-else
-  AUDIO_IN=( -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 )
-  echo "[stream] audio: (none) -> 無音にフォールバック"
-fi
+# --- 5) ffmpeg で画面(x11grab)＋音声(FIFO)をキャプチャ → 配信/録画 ----
 COMMON_IN=( -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" )
 COMMON_ENC=( -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"

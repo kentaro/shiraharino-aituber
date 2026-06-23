@@ -82,6 +82,21 @@ let swayEnergy = 0; // 体揺れ用にゆっくり追従するエネルギー
 let started = false;
 let rafStarted = false;
 
+// follow mode（別経路ミックス用）: 音声は外部フィーダが鳴らし、
+// 配信ページは nowplaying.json の env で口パクする（音声再生・解析なし）
+const followMode = new URLSearchParams(location.search).get("follow") === "1";
+interface NowPlaying {
+  id: string;
+  t_start: number;   // epoch ms
+  dur_ms: number;
+  theme?: string;
+  text?: string;
+  env: number[];
+  env_dt_ms: number;
+}
+let np: NowPlaying | null = null;
+let npId = "";
+
 // まばたき
 let blinkValue = 0;     // 0=開 1=閉
 let blinkPhase: "idle" | "closing" | "opening" = "idle";
@@ -152,10 +167,40 @@ function sampleAudio(): void {
   smoothedRms = smoothedRms * (1 - CFG.lip.smoothing) + rms * CFG.lip.smoothing;
 }
 
+// follow mode: nowplaying.json の env を t_start からの経過時間で引く
+function sampleEnvelope(): void {
+  let rms = 0;
+  if (np && np.env && np.env.length) {
+    const pos = Date.now() - np.t_start;
+    if (pos >= 0 && pos < np.dur_ms) {
+      const i = Math.floor(pos / (np.env_dt_ms || 50));
+      rms = np.env[Math.min(i, np.env.length - 1)] || 0;
+    }
+  }
+  smoothedRms = smoothedRms * (1 - CFG.lip.smoothing) + rms * CFG.lip.smoothing;
+}
+
+async function pollNowplaying(): Promise<void> {
+  try {
+    const res = await fetch("segments/nowplaying.json?t=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) return;
+    const data: NowPlaying = await res.json();
+    np = data;
+    if (data.id !== npId) {
+      npId = data.id;
+      themeText.textContent = data.theme || "フリートーク";
+      subtitleText.textContent = data.text || "";
+    }
+  } catch {
+    /* フィーダ未起動でも沈黙 */
+  }
+}
+
 // ---- 描画ループ（口オーバーレイのみ） --------------------------------
 function render(): void {
   const now = performance.now();
-  sampleAudio();
+  if (followMode) sampleEnvelope();
+  else sampleAudio();
   updateMouthState(now);
 
   // 体の動き（元動画が静止のため JS で付与。要素 transform = GPU合成で滑らか）
@@ -303,12 +348,33 @@ async function playbackLoop(): Promise<void> {
       continue;
     }
     const seg = queue.shift()!;
+    // 別経路ミックス（映像キャプチャ＋wav音声）用に再生開始時刻を記録
+    console.log(`__SEG__ ${seg.id} ${Date.now()} ${seg.audio || ""}`);
     await playSegment(seg);
     await new Promise((r) => setTimeout(r, 280)); // 息継ぎ
   }
 }
 
-// ---- 起動 ------------------------------------------------------------
+// ---- 起動（follow mode: 音声は外部フィーダ。ページは env で口パク） ----
+async function startFollow(): Promise<void> {
+  if (started) return;
+  started = true;
+  boot.classList.add("hidden");
+  video.loop = true;
+  await video.play().catch(() => {});
+  video.addEventListener("pause", () => {
+    if (started) video.play().catch(() => {});
+  });
+  scheduleNextBlink(performance.now());
+  if (!rafStarted) {
+    rafStarted = true;
+    requestAnimationFrame(render);
+  }
+  await pollNowplaying();
+  setInterval(pollNowplaying, 120);
+}
+
+// ---- 起動（標準: ページ自身が音声を再生して口パク・プレビュー/pulse用） ----
 async function start(): Promise<void> {
   if (started) return;
 
@@ -360,6 +426,12 @@ async function init(): Promise<void> {
     return;
   }
   bootBtn.addEventListener("click", () => void start());
+
+  // follow mode は音声を鳴らさないので自動再生制限に掛からない → 即起動
+  if (followMode) {
+    void startFollow();
+    return;
+  }
 
   const params = new URLSearchParams(location.search);
   if (params.get("autostart") !== "0") {

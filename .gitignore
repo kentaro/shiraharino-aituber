@@ -19,3 +19,11 @@ secrets/
 web/segments/*.wav
 web/segments/*.mp3
 !web/segments/seed_*.wav
+
+# 実行時の状態ファイル
+web/segments/nowplaying.json
+**/audio.fifo
+
+# Python
+__pycache__/
+*.pyc

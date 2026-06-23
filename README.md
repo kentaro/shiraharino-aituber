@@ -7,17 +7,24 @@ YouTube Live 配信しつづけるための配信スタック。OBS も外部の
 > UIはHTML/CSS、映像化はChrome+Xvfb、配信はffmpeg、という分担。
 
 ```
-HTML/CSS/JS (配信ページ)
-   │  ← 背景画像＋透過キャラ＋口パク＋まばたき＋時計/テーマ/字幕
-   ▼
-Xvfb (仮想ディスプレイ) ← chromium --kiosk でレンダリング
-   ▼
-ffmpeg (x11grab + PulseAudio)
-   ▼
-YouTube Live (rtmps)  /  ローカル録画(mp4)
+                    ┌─ 映像 ─────────────────────────────────┐
+HTML/CSS/JS(配信ページ follow mode)              audio_feeder.py
+   背景＋透過キャラ＋口パク＋まばたき＋字幕            playlist の wav を
+   （口パクは nowplaying.json の env で駆動）          PCM で FIFO に供給
+        │                                              │
+   Xvfb + chromium --kiosk                             │
+        │                                              │
+   ffmpeg  ◄── x11grab(映像) ──────────── FIFO(音声) ──┘
+        ▼
+   YouTube Live(rtmps) / 録画(mp4)
 ```
 
-音声は **VOICEVOX 冥鳴ひまり**、台本は **box内蔵 Codec(gpt-5.5)** が生成（サブスクなので 24/7 でも限界課金ゼロ）。
+**音声は別経路**: ブラウザの音声を一切キャプチャしない（PulseAudio不要）。
+`audio_feeder.py` が playlist の wav を ffmpeg に渡し、配信ページは
+`nowplaying.json` の envelope で口パクする。映像と音声は壁時計で**完全同期**し、
+**Linux でも macOS でも**同じ仕組みで動く。
+
+音声は **VOICEVOX 冥鳴ひまり**、台本は **サーバ内蔵 Codec(gpt-5.5)** が生成（サブスクなので 24/7 でも限界課金ゼロ）。
 
 ## 構成
 
@@ -30,9 +37,11 @@ web/                  配信用Webページ（静的・これ1枚が「番組画
   segments/           TTS音声 + playlist.json（再生キュー）
 src/broadcast.ts      レンダラ本体（TypeScript）
 scripts/
-  stream.sh           Xvfb+chromium+ffmpeg の配信パイプライン（録画/配信）
+  stream.sh           Xvfb+chromium+ffmpeg の配信パイプライン（映像x11grab＋音声FIFO）
+  audio_feeder.py     playlist の wav を PCM で ffmpeg に供給＋nowplaying.json を書く
   run.sh              24/7 マスター起動（content_loop と stream を監督・自動復帰）
-  content_loop.py     台本生成(box Codec/gemini/offline)→VOICEVOX→playlist
+  content_loop.py     台本生成(box Codec/gemini/offline)→VOICEVOX→playlist(+env)
+  seg_env.py          口パク用エンベロープ計算（共有・純stdlib）
   tts_generate.py     content/content.json から音声を一括生成（seed作成等）
   make_assets.sh      透過webm・閉じ目スプライトの再生成
 content/content.json  seed の台本

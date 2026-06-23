@@ -17,6 +17,8 @@ content.json 形式:
   { "segments": [ {"theme": "...", "text": "..."}, ... ] }
 """
 import os, sys, json, argparse, hashlib, subprocess, urllib.request, urllib.parse
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from seg_env import wav_envelope
 
 VOICEVOX_URL = os.environ.get("VOICEVOX_URL", "http://127.0.0.1:50021").rstrip("/")
 SPEAKER = int(os.environ.get("RINO_SPEAKER", "14"))
@@ -76,7 +78,9 @@ def main() -> int:
                 to_mp3(wav, mp3)
             out_audio = mp3
         rel = "segments/" + os.path.basename(out_audio)
-        segs.append({"id": f"seg_{h}", "audio": rel, "text": text, "theme": theme})
+        env, dur_ms = wav_envelope(wav)
+        segs.append({"id": f"seg_{h}", "audio": rel, "text": text, "theme": theme,
+                     "dur_ms": dur_ms, "env": env})
 
     playlist = {"updated": content.get("updated", "generated"), "speaker": SPEAKER, "segments": segs}
     with open(os.path.join(args.out, "playlist.json"), "w", encoding="utf-8") as f:

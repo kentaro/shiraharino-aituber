@@ -42,6 +42,9 @@
   var swayEnergy = 0;
   var started = false;
   var rafStarted = false;
+  var followMode = new URLSearchParams(location.search).get("follow") === "1";
+  var np = null;
+  var npId = "";
   var blinkValue = 0;
   var blinkPhase = "idle";
   var nextBlinkAt = 0;
@@ -101,9 +104,35 @@
     const rms = Math.sqrt(sum / buf.length);
     smoothedRms = smoothedRms * (1 - CFG.lip.smoothing) + rms * CFG.lip.smoothing;
   }
+  function sampleEnvelope() {
+    let rms = 0;
+    if (np && np.env && np.env.length) {
+      const pos = Date.now() - np.t_start;
+      if (pos >= 0 && pos < np.dur_ms) {
+        const i = Math.floor(pos / (np.env_dt_ms || 50));
+        rms = np.env[Math.min(i, np.env.length - 1)] || 0;
+      }
+    }
+    smoothedRms = smoothedRms * (1 - CFG.lip.smoothing) + rms * CFG.lip.smoothing;
+  }
+  async function pollNowplaying() {
+    try {
+      const res = await fetch("segments/nowplaying.json?t=" + Date.now(), { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      np = data;
+      if (data.id !== npId) {
+        npId = data.id;
+        themeText.textContent = data.theme || "\u30D5\u30EA\u30FC\u30C8\u30FC\u30AF";
+        subtitleText.textContent = data.text || "";
+      }
+    } catch {
+    }
+  }
   function render() {
     const now = performance.now();
-    sampleAudio();
+    if (followMode) sampleEnvelope();
+    else sampleAudio();
     updateMouthState(now);
     const energy = Math.min(1, smoothedRms / CFG.lip.openThresh);
     swayEnergy += (energy - swayEnergy) * 0.02;
@@ -226,9 +255,29 @@
         continue;
       }
       const seg = queue.shift();
+      console.log(`__SEG__ ${seg.id} ${Date.now()} ${seg.audio || ""}`);
       await playSegment(seg);
       await new Promise((r) => setTimeout(r, 280));
     }
+  }
+  async function startFollow() {
+    if (started) return;
+    started = true;
+    boot.classList.add("hidden");
+    video.loop = true;
+    await video.play().catch(() => {
+    });
+    video.addEventListener("pause", () => {
+      if (started) video.play().catch(() => {
+      });
+    });
+    scheduleNextBlink(performance.now());
+    if (!rafStarted) {
+      rafStarted = true;
+      requestAnimationFrame(render);
+    }
+    await pollNowplaying();
+    setInterval(pollNowplaying, 120);
   }
   async function start() {
     if (started) return;
@@ -274,6 +323,10 @@
       return;
     }
     bootBtn.addEventListener("click", () => void start());
+    if (followMode) {
+      void startFollow();
+      return;
+    }
     const params = new URLSearchParams(location.search);
     if (params.get("autostart") !== "0") {
       start().catch(() => boot.classList.remove("hidden"));

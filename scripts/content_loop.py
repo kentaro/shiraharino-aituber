@@ -27,6 +27,8 @@
   OUT_DIR          default: ../web/segments
 """
 import os, sys, json, time, hashlib, re, urllib.request, urllib.parse, random
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from seg_env import wav_envelope
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.environ.get("OUT_DIR", os.path.join(ROOT, "web", "segments"))
@@ -173,8 +175,11 @@ def main():
                 continue
             h = hashlib.sha1((str(SPEAKER) + text).encode()).hexdigest()[:10]
             fn = f"seg_{h}.wav"
-            open(os.path.join(OUT_DIR, fn), "wb").write(wav)
-            segs.append({"id": f"seg_{h}", "audio": f"segments/{fn}", "text": text, "theme": it["theme"]})
+            wpath = os.path.join(OUT_DIR, fn)
+            open(wpath, "wb").write(wav)
+            env, dur_ms = wav_envelope(wpath)
+            segs.append({"id": f"seg_{h}", "audio": f"segments/{fn}", "text": text,
+                         "theme": it["theme"], "dur_ms": dur_ms, "env": env})
             recent.append(text); recent = recent[-8:]
             added += 1
 
