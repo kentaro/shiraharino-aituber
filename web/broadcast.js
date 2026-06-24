@@ -192,11 +192,23 @@
       }
     }
   }
+  var jstTime = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+  var jstDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
   function tickClock() {
     const now = /* @__PURE__ */ new Date();
-    const p = (n) => String(n).padStart(2, "0");
-    clockTime.textContent = `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
-    clockDate.textContent = `${now.getFullYear()}.${p(now.getMonth() + 1)}.${p(now.getDate())}`;
+    clockTime.textContent = jstTime.format(now);
+    clockDate.textContent = jstDate.format(now).replace(/-/g, ".");
   }
   async function fetchPlaylist() {
     try {

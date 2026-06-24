@@ -279,11 +279,17 @@ function updateBlink(now: number): void {
 }
 
 // ---- 時計 ------------------------------------------------------------
+// 配信サーバのTZ(UTC等)に依存せず、常に日本時間(JST)で表示する
+const jstTime = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+});
+const jstDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+});
 function tickClock(): void {
   const now = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  clockTime.textContent = `${p(now.getHours())}:${p(now.getMinutes())}:${p(now.getSeconds())}`;
-  clockDate.textContent = `${now.getFullYear()}.${p(now.getMonth() + 1)}.${p(now.getDate())}`;
+  clockTime.textContent = jstTime.format(now);
+  clockDate.textContent = jstDate.format(now).replace(/-/g, ".");
 }
 
 // ---- playlist 取得 → キュー追記 -------------------------------------
