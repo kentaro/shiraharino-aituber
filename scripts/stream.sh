@@ -70,10 +70,10 @@ cleanup() {
   echo "[stream] cleanup..."
   for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
   # キーパーループの子（chromium/feeder）も確実に始末（重複ingest防止）
-  pkill -9 -f "chrome-profile" 2>/dev/null || true
-  pkill -9 -f "audio_feeder" 2>/dev/null || true
-  pkill -9 -f "Xvfb :$DISPLAY_NUM" 2>/dev/null || true
-  pkill -9 -f "http.server $WEB_PORT" 2>/dev/null || true
+  pkill -9 -f "chrome-[p]rofile" 2>/dev/null || true
+  pkill -9 -f "audio_[f]eeder" 2>/dev/null || true
+  pkill -9 -f "X[v]fb :$DISPLAY_NUM" 2>/dev/null || true
+  pkill -9 -f "http.server ${WEB_PORT%?}[${WEB_PORT: -1}]" 2>/dev/null || true
   rm -f "$FIFO" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
@@ -81,12 +81,12 @@ trap cleanup EXIT INT TERM
 echo "[stream] mode=$MODE  ${WIDTH}x${HEIGHT}@${FPS}  chrome=$CHROME"
 
 # --- 0) 起動前に前インスタンスの残骸を一掃（重複ingest/重複描画を絶対防止）---
-pkill -9 -f "rtmp.*youtube" 2>/dev/null || true
-pkill -9 -f "chrome-profile" 2>/dev/null || true
-pkill -9 -f "audio_feeder" 2>/dev/null || true
-pkill -9 -f "x11grab" 2>/dev/null || true
-pkill -9 -f "Xvfb :$DISPLAY_NUM" 2>/dev/null || true
-pkill -9 -f "http.server $WEB_PORT" 2>/dev/null || true
+pkill -9 -f "rtmp.*y[o]utube" 2>/dev/null || true
+pkill -9 -f "chrome-[p]rofile" 2>/dev/null || true
+pkill -9 -f "audio_[f]eeder" 2>/dev/null || true
+pkill -9 -f "x11[g]rab" 2>/dev/null || true
+pkill -9 -f "X[v]fb :$DISPLAY_NUM" 2>/dev/null || true
+pkill -9 -f "http.server ${WEB_PORT%?}[${WEB_PORT: -1}]" 2>/dev/null || true
 sleep 1
 
 # 起動したコードの git 版を記録（keepalive の版チェック用）
@@ -195,7 +195,7 @@ COMMON_ENC=( "${AUDIO_MAP[@]}"
 if [[ "$MODE" == "live" ]]; then
   [[ -z "$STREAM_KEY" ]] && { echo "[stream] live は STREAM_KEY 必須" >&2; exit 1; }
   # この ffmpeg 以外に YouTube へ送出している ffmpeg を確実に消す（単一ingest保証）
-  pkill -9 -f "rtmp.*youtube" 2>/dev/null || true; sleep 1
+  pkill -9 -f "rtmp.*y[o]utube" 2>/dev/null || true; sleep 1
   echo "[stream] → YouTube Live: ${YT_URL}"
   ffmpeg -hide_banner -loglevel warning "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
     -f flv "${YT_URL}/${STREAM_KEY}"

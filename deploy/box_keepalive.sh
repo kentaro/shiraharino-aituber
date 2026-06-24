@@ -32,7 +32,7 @@ echo "$(date '+%F %T') keepalive daemon start pid=$$" >> "$SNAP/keepalive.log"
 # 子の配信を道連れにしないため、TERM受領時は run.sh ツリーごと畳む
 cleanup() {
   echo "$(date '+%F %T') keepalive stopping" >> "$SNAP/keepalive.log"
-  pkill -9 -f "$REPO/scripts/run.sh" 2>/dev/null || true
+  pkill -9 -f "$REPO/scripts/r[u]n.sh" 2>/dev/null || true
   exit 0
 }
 trap cleanup INT TERM
@@ -40,8 +40,8 @@ trap cleanup INT TERM
 launch_once() {
   echo "$(date '+%T') down/stale -> restart" >> "$SNAP/keepalive.log"
   # 残骸を一掃（run.sh監督ツリー・配信・ブラウザ・音声を全部）
-  for p in "$REPO/scripts/run.sh" "$REPO/scripts/stream.sh" "audio_feeder" \
-           "x11grab" "Xvfb :99" "chrome-profile" "rtmp.*youtube" "http.server 8780"; do
+  for p in "$REPO/scripts/r[u]n.sh" "$REPO/scripts/s[t]ream.sh" "audio_[f]eeder" \
+           "x11[g]rab" "X[v]fb :99" "chrome-[p]rofile" "rtmp.*y[o]utube" "http.server 878[0]"; do
     pkill -9 -f "$p" 2>/dev/null || true
   done
   pkill -9 -x ffmpeg 2>/dev/null || true
