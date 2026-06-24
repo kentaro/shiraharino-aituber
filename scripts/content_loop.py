@@ -76,7 +76,21 @@ def _clean_line(text):
     return t.strip()
 
 
-def _build_prompt(theme, recent):
+# 話の「弧（アーク）」: 話題を切り出し→深め→気づき→締めて次へ、と起承転結で展開させる。
+# depth は同じ話題に入ってから何本目か（main の since_theme）。
+def _arc_hint(theme, depth):
+    if depth <= 0:
+        return f"いま新しい話題（{theme}）をそっと切り出す。情景・観察・ふとした気づきから自然に入る。"
+    if depth == 1:
+        return "さっき切り出した話題を一歩深める。具体例や小さな出来事を一つ添える。"
+    if depth == 2:
+        return "さらに掘り下げる。なぜそう感じるのか、理由や背景にそっと触れる。"
+    if depth == 3:
+        return "そこから生まれた気づきや、聞き手へのやわらかい問いかけにする。"
+    return f"この話題をそっと締めくくり、次の話題（{theme}）へ自然につながる一言にする。"
+
+
+def _build_prompt(theme, recent, depth=0):
     if not recent:
         return (
             f"{PERSONA}\n\n"
@@ -89,29 +103,28 @@ def _build_prompt(theme, recent):
         f"{PERSONA}\n\n"
         f"あなたは今ライブ配信中。直前までの自分の語り（古い→新しい）:\n{flow}\n\n"
         f"いま直前に言ったのはこれ →「{last}」\n\n"
-        f"この『直前の一文』を受けて、同じ話を“もう一歩だけ”進める次の一言を作ってください。\n"
-        f"・前の文の言葉・話題をはっきり引き継ぐ。具体例／理由／気づき／問いかけのどれかで展開する。\n"
-        f"・話題を急に変えない。バラバラな独立した名言にしない（前の文と繋がっていること）。\n"
-        f"・数文に一度だけ、自然な流れで別の話題（例: {theme}）へ移ってよい。\n"
+        f"この『直前の一文』を受けて、話を次の一言へ進めてください。\n"
+        f"いまの展開ステップ: {_arc_hint(theme, depth)}\n"
+        f"・前の文の言葉・話題をはっきり引き継ぐ。バラバラな独立した名言にしない（前の文と繋がっていること）。\n"
         f"・同じ言い回しや内容を繰り返さない。\n"
         f"・20〜38字・1文・話し言葉でやわらかく。比喩や詩的表現を盛りすぎない。\n"
         f"・絵文字や記号やかっこ書きや前置きなし。本文だけを出力。"
     )
 
 
-def gen_box(theme, recent):
+def gen_box(theme, recent, depth=0):
     headers = {"Authorization": f"Bearer {BOX_API_TOKEN}"} if BOX_API_TOKEN else {}
     req = urllib.request.Request(
         BOX_API_URL + "/v1/chat/completions",
         data=json.dumps({"model": BOX_MODEL,
-                         "messages": [{"role": "user", "content": _build_prompt(theme, recent)}],
+                         "messages": [{"role": "user", "content": _build_prompt(theme, recent, depth)}],
                          "stream": False, "temperature": 1.0}).encode(),
         headers={"Content-Type": "application/json", **headers})
     data = json.load(urllib.request.urlopen(req, timeout=60))
     return _clean_line(data["choices"][0]["message"]["content"])
 
 
-def gen_gemini(theme, recent):
+def gen_gemini(theme, recent, depth=0):
     if not GEMINI_KEY:
         return ""
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -120,7 +133,7 @@ def gen_gemini(theme, recent):
     # 本文が途中で切れる）。本文だけを十分なトークンで返させる。
     req = urllib.request.Request(
         url,
-        data=json.dumps({"contents": [{"parts": [{"text": _build_prompt(theme, recent)}]}],
+        data=json.dumps({"contents": [{"parts": [{"text": _build_prompt(theme, recent, depth)}]}],
                          "generationConfig": {"temperature": 1.1, "maxOutputTokens": 128,
                                               "thinkingConfig": {"thinkingBudget": 0}}}).encode(),
         headers={"Content-Type": "application/json"})
@@ -129,7 +142,7 @@ def gen_gemini(theme, recent):
     return _clean_line("".join(p.get("text", "") for p in parts))
 
 
-def generate_line(theme, recent):
+def generate_line(theme, recent, depth=0):
     """直前の語りを受けて展開する一言を返す。失敗時は ''（固定文に落とさない＝反復しない）。"""
     order = []
     for b in BACKEND.split(","):
@@ -140,7 +153,7 @@ def generate_line(theme, recent):
             order.append(gen_gemini)
     for fn in order:
         try:
-            t = fn(theme, recent)
+            t = fn(theme, recent, depth)
         except Exception as e:
             sys.stderr.write(f"[content] {fn.__name__} fail: {e}\n")
             continue
@@ -261,14 +274,14 @@ def main():
             time.sleep(0.4)
             continue
 
-        # 3) テーマは数本ごとに移ろう（話が一定の流れで展開し、ときどき転換）
-        if since_theme >= 5:
+        # 3) テーマは1つのアーク（起承転結＝約5本）ごとに移ろう
+        if since_theme > 5:
             theme_i = (theme_i + 1) % len(THEMES)
             since_theme = 0
         theme = THEMES[theme_i]
 
-        # 4) 直前の語りを受けて“次の一言”を生成
-        text = generate_line(theme, recent)
+        # 4) 直前の語りを受けて“次の一言”を生成（since_theme=アーク内の深さ）
+        text = generate_line(theme, recent, depth=since_theme)
         if not text:
             fail_streak += 1
             back = min(20, 2 * fail_streak)  # 失敗が続いてもVOICEVOXは叩かず待つだけ
