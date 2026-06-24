@@ -53,6 +53,8 @@ fi
 
 MODE="${MODE:-record}"
 WIDTH="${WIDTH:-540}"; HEIGHT="${HEIGHT:-960}"; FPS="${FPS:-12}"
+GRAB_FPS="${GRAB_FPS:-$FPS}"
+OUTPUT_FPS="${OUTPUT_FPS:-$FPS}"
 PRESET="${PRESET:-ultrafast}"   # 低スペック箱向け（CPU節約）
 RENDER_FPS="${RENDER_FPS:-$FPS}" # ブラウザ描画fps。YouTube送出fpsとは分離する。
 BODY_MOTION="${BODY_MOTION:-0}"   # 1 なら配信画面の全身揺れを有効化する。
@@ -108,7 +110,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "[stream] mode=$MODE  ${WIDTH}x${HEIGHT}@${FPS}  chrome=$CHROME"
+echo "[stream] mode=$MODE  ${WIDTH}x${HEIGHT} grab=${GRAB_FPS} out=${OUTPUT_FPS} render=${RENDER_FPS}  chrome=$CHROME"
 
 # --- 0) 起動前に前インスタンスの残骸を一掃（重複ingest/重複描画を絶対防止）---
 pkill -9 -f "rtmp.*y[o]utube" 2>/dev/null || true
@@ -238,21 +240,24 @@ if [[ -f "$BGM_FILE" ]]; then
   # 「エンコーダがリアルタイムより高速」エラー＝バースト送出になる。
   BGM_IN=( -re -stream_loop -1 -i "$BGM_FILE" )   # input2 = BGM(無限ループ)
   AV_FILTER_MAP=( -filter_complex
-    "[0:v]fps=${FPS}[vout];[1:a]aresample=44100[v];[2:a]aresample=44100,volume=${BGM_VOL}[b];[v][b]amix=inputs=2:duration=first:normalize=0[aout]"
+    "[0:v]fps=${OUTPUT_FPS}[vout];[1:a]aresample=44100[v];[2:a]aresample=44100,volume=${BGM_VOL}[b];[v][b]amix=inputs=2:duration=first:normalize=0[aout]"
     -map "[vout]" -map "[aout]" )
   echo "[stream] BGM: $BGM_FILE (vol=$BGM_VOL)"
 fi
+if [[ ! -f "$BGM_FILE" ]]; then
+  AV_FILTER_MAP=( -vf "fps=${OUTPUT_FPS}" -map 0:v:0 -map 1:a:0 )
+fi
 COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
-            -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
+            -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$GRAB_FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" "${BGM_IN[@]}" )
 COMMON_ENC=( "${AV_FILTER_MAP[@]}"
              # x11grab のジッタはフィルタ側で均等サンプリングし、YouTubeには安定したCFRで渡す。
-             -fps_mode cfr -r "$FPS" -max_muxing_queue_size 1024
+             -fps_mode cfr -r "$OUTPUT_FPS" -max_muxing_queue_size 1024
              # Voice FIFO can jitter under load. Do not let the FLV muxer buffer
              # video for seconds while waiting for a late audio packet.
              -max_interleave_delta 0 -muxdelay 0 -muxpreload 0
              -c:v libx264 -preset "$PRESET" -pix_fmt yuv420p
-             -g $((FPS*KEYINT_SECONDS)) -keyint_min "$FPS" -sc_threshold 0 -bf 0
+             -g $((OUTPUT_FPS*KEYINT_SECONDS)) -keyint_min "$OUTPUT_FPS" -sc_threshold 0 -bf 0
              -b:v "$VBR" -maxrate "$VBR" -bufsize "$VIDEO_BUFSIZE"
              -c:a aac -b:a "$ABR" -ar 44100 -ac 2 )
 
