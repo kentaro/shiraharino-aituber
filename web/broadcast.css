@@ -40,9 +40,16 @@ html, body {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
+  transform-origin: center center;
   width: 1280px; height: 720px;
   overflow: hidden;
   background: #dceaf7;
+}
+
+@media (max-width: 1279px), (max-height: 719px) {
+  .stage {
+    transform: translate(-50%, -50%) scale(0.75);
+  }
 }
 
 /* 背景画像 */
@@ -62,7 +69,6 @@ html, body {
   transform: translateX(-50%);
   transform-origin: 50% 92%;   /* 足元寄りを支点に自然に揺れる */
   will-change: transform;
-  filter: drop-shadow(0 10px 18px rgba(74, 134, 197, 0.28));
 }
 .char-base, .mouth-canvas, .blink {
   position: absolute; inset: 0;
@@ -100,13 +106,7 @@ html, body {
 .live-dot {
   width: 11px; height: 11px; border-radius: 50%;
   background: #e8506b;
-  box-shadow: 0 0 0 0 rgba(232, 80, 107, 0.6);
-  animation: pulse 1.6s infinite;
-}
-@keyframes pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(232, 80, 107, 0.55); }
-  70%  { box-shadow: 0 0 0 10px rgba(232, 80, 107, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(232, 80, 107, 0); }
+  box-shadow: 0 0 0 5px rgba(232, 80, 107, 0.12);
 }
 .live-text { font-weight: 800; color: #e8506b; letter-spacing: 0.12em; font-size: 15px; }
 .live-sub { font-weight: 700; color: var(--blue-deep); font-size: 12px; letter-spacing: 0.1em; }
@@ -220,7 +220,8 @@ html, body {
 }
 .standby-dot {
   width: 10px; height: 10px; border-radius: 50%;
-  background: var(--gold); animation: pulse 1.6s infinite;
+  background: var(--gold);
+  box-shadow: 0 0 0 5px rgba(217, 182, 90, 0.14);
 }
 .standby-title { font-size: 26px; font-weight: 800; color: var(--ink); margin-top: 4px; }
 .standby-msg { font-size: 16px; font-weight: 700; color: var(--blue-deep); margin-top: 2px; }

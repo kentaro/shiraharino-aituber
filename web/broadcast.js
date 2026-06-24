@@ -43,6 +43,7 @@
   var started = false;
   var rafStarted = false;
   var followMode = new URLSearchParams(location.search).get("follow") === "1";
+  var bodyMotion = new URLSearchParams(location.search).get("motion") === "1";
   var lipsyncLagMs = parseInt(new URLSearchParams(location.search).get("lag") || "0", 10) || 0;
   var np = null;
   var npId = "";
@@ -149,14 +150,16 @@
     if (followMode) sampleEnvelope();
     else sampleAudio();
     updateMouthState(now);
-    const energy = Math.min(1, smoothedRms / CFG.lip.openThresh);
-    swayEnergy += (energy - swayEnergy) * 0.02;
-    const t = now * 1e-3;
-    const breathe = Math.sin(t * 1.05) * 2.2;
-    const scaleY = 1 + (Math.sin(t * 1.05) * 0.5 + 0.5) * 6e-3;
-    const swayX = Math.sin(t * 0.62) * 2.6 * swayEnergy;
-    const tilt = Math.sin(t * 0.43) * 0.5;
-    charEl.style.transform = `translateX(-50%) translate(${swayX.toFixed(2)}px, ${breathe.toFixed(2)}px) rotate(${tilt.toFixed(2)}deg) scaleY(${scaleY.toFixed(4)})`;
+    if (bodyMotion) {
+      const energy = Math.min(1, smoothedRms / CFG.lip.openThresh);
+      swayEnergy += (energy - swayEnergy) * 0.02;
+      const t = now * 1e-3;
+      const breathe = Math.sin(t * 1.05) * 2.2;
+      const scaleY = 1 + (Math.sin(t * 1.05) * 0.5 + 0.5) * 6e-3;
+      const swayX = Math.sin(t * 0.62) * 2.6 * swayEnergy;
+      const tilt = Math.sin(t * 0.43) * 0.5;
+      charEl.style.transform = `translateX(-50%) translate(${swayX.toFixed(2)}px, ${breathe.toFixed(2)}px) rotate(${tilt.toFixed(2)}deg) scaleY(${scaleY.toFixed(4)})`;
+    }
     updateBlink(now);
     blinkEl.style.opacity = blinkValue > 0.35 ? "1" : "0";
     mctx.clearRect(0, 0, mouthCanvas.width, mouthCanvas.height);

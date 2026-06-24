@@ -86,6 +86,10 @@ let rafStarted = false;
 // follow mode（別経路ミックス用）: 音声は外部フィーダが鳴らし、
 // 配信ページは nowplaying.json の env で口パクする（音声再生・解析なし）
 const followMode = new URLSearchParams(location.search).get("follow") === "1";
+// 3コアboxでは大きなキャラ画像(700px)のtransformを毎描画更新すると、
+// headless Chromium のソフト合成がCPUを食い切る。通常配信は口パクと
+// まばたきだけを動かし、全身の揺れは明示指定時だけ有効化する。
+const bodyMotion = new URLSearchParams(location.search).get("motion") === "1";
 // 口パク遅延(ms)。音声は フィーダ→FIFO→ffmpeg のパイプライン分だけ遅れて
 // 配信に乗るので、口パクを同じだけ遅らせて声と一致させる（?lag=1800 等）。
 const lipsyncLagMs = parseInt(new URLSearchParams(location.search).get("lag") || "0", 10) || 0;
@@ -227,18 +231,19 @@ function render(): void {
   else sampleAudio();
   updateMouthState(now);
 
-  // 体の動き（元動画が静止のため JS で付与。要素 transform = GPU合成で滑らか）
-  // ゆっくりした呼吸を常時。発話時はごく僅かに横へ揺れる程度（自然・控えめ）
-  const energy = Math.min(1, smoothedRms / CFG.lip.openThresh);
-  swayEnergy += (energy - swayEnergy) * 0.02; // 時定数 ~0.8s でゆっくり追従
-  const t = now * 0.001;
-  const breathe = Math.sin(t * 1.05) * 2.2;                 // 上下 ±2.2px（周期 ~6s）
-  const scaleY = 1 + (Math.sin(t * 1.05) * 0.5 + 0.5) * 0.006; // 呼吸の伸び
-  const swayX = Math.sin(t * 0.62) * 2.6 * swayEnergy;       // 横揺れ（周期 ~10s・発話時のみ）
-  const tilt = Math.sin(t * 0.43) * 0.5;                     // 非常に緩い傾き
-  charEl.style.transform =
-    `translateX(-50%) translate(${swayX.toFixed(2)}px, ${breathe.toFixed(2)}px) ` +
-    `rotate(${tilt.toFixed(2)}deg) scaleY(${scaleY.toFixed(4)})`;
+  if (bodyMotion) {
+    // 体の動き（元動画が静止のため JS で付与）。box以外のプレビュー用。
+    const energy = Math.min(1, smoothedRms / CFG.lip.openThresh);
+    swayEnergy += (energy - swayEnergy) * 0.02;
+    const t = now * 0.001;
+    const breathe = Math.sin(t * 1.05) * 2.2;
+    const scaleY = 1 + (Math.sin(t * 1.05) * 0.5 + 0.5) * 0.006;
+    const swayX = Math.sin(t * 0.62) * 2.6 * swayEnergy;
+    const tilt = Math.sin(t * 0.43) * 0.5;
+    charEl.style.transform =
+      `translateX(-50%) translate(${swayX.toFixed(2)}px, ${breathe.toFixed(2)}px) ` +
+      `rotate(${tilt.toFixed(2)}deg) scaleY(${scaleY.toFixed(4)})`;
+  }
 
   // まばたき。opacityは二値化（中間値で開き目が透けるのを防ぐ＝閉じてる間は完全不透明）
   updateBlink(now);
