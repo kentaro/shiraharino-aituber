@@ -175,6 +175,7 @@ html, body {
   padding: 12px 26px;
   display: flex; flex-direction: column; gap: 4px;
 }
+.subtitle.hidden { display: none; }
 .subtitle-name {
   font-size: 13px; font-weight: 800; letter-spacing: 0.1em;
   color: var(--blue-deep);
@@ -196,6 +197,33 @@ html, body {
   background: rgba(255,255,255,0.7);
   padding: 4px 10px; border-radius: 8px;
 }
+
+/* ===== 配信待機画面 ===== */
+.standby {
+  position: absolute; left: 50%; bottom: 22px;
+  transform: translateX(-50%);
+  width: 1100px;
+  display: flex; justify-content: center;
+}
+.standby.hidden { display: none; }
+.standby-card {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(127, 184, 230, 0.45);
+  padding: 16px 40px; text-align: center;
+}
+.standby-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 800; letter-spacing: 0.18em;
+  color: var(--blue-deep);
+}
+.standby-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--gold); animation: pulse 1.6s infinite;
+}
+.standby-title { font-size: 26px; font-weight: 800; color: var(--ink); margin-top: 4px; }
+.standby-msg { font-size: 16px; font-weight: 700; color: var(--blue-deep); margin-top: 2px; }
 
 /* ===== 起動オーバーレイ ===== */
 .boot {

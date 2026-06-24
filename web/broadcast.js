@@ -27,6 +27,8 @@
   var vuFill = $("vu-fill");
   var boot = $("boot");
   var bootBtn = $("boot-btn");
+  var standbyEl = $("standby");
+  var subtitleBox = $("subtitle");
   var track = [];
   var trackFps = 25;
   var srcW = 1254;
@@ -124,6 +126,10 @@
         npId = data.id;
         themeText.textContent = data.theme || "\u30D5\u30EA\u30FC\u30C8\u30FC\u30AF";
         subtitleText.textContent = data.text || "";
+        if (data.text) {
+          standbyEl.classList.add("hidden");
+          subtitleBox.classList.remove("hidden");
+        }
       }
     } catch {
     }
@@ -142,7 +148,7 @@
     const tilt = Math.sin(t * 0.43) * 0.5;
     charEl.style.transform = `translateX(-50%) translate(${swayX.toFixed(2)}px, ${breathe.toFixed(2)}px) rotate(${tilt.toFixed(2)}deg) scaleY(${scaleY.toFixed(4)})`;
     updateBlink(now);
-    blinkEl.style.opacity = blinkValue.toFixed(3);
+    blinkEl.style.opacity = blinkValue > 0.35 ? "1" : "0";
     mctx.clearRect(0, 0, mouthCanvas.width, mouthCanvas.height);
     const frame = currentFrame();
     if (frame) {
@@ -275,6 +281,8 @@
     if (started) return;
     started = true;
     boot.classList.add("hidden");
+    standbyEl.classList.remove("hidden");
+    subtitleBox.classList.add("hidden");
     scheduleNextBlink(performance.now());
     if (!rafStarted) {
       rafStarted = true;

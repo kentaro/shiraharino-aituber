@@ -64,6 +64,8 @@ const subtitleText = $("subtitle-text");
 const vuFill = $("vu-fill");
 const boot = $("boot");
 const bootBtn = $("boot-btn");
+const standbyEl = $("standby");
+const subtitleBox = $("subtitle");
 
 // ---- 状態 ------------------------------------------------------------
 let track: TrackFrame[] = [];
@@ -191,6 +193,10 @@ async function pollNowplaying(): Promise<void> {
       npId = data.id;
       themeText.textContent = data.theme || "フリートーク";
       subtitleText.textContent = data.text || "";
+      if (data.text) { // 喋り始めたら待機画面→字幕に切り替え
+        standbyEl.classList.add("hidden");
+        subtitleBox.classList.remove("hidden");
+      }
     }
   } catch {
     /* フィーダ未起動でも沈黙 */
@@ -217,9 +223,9 @@ function render(): void {
     `translateX(-50%) translate(${swayX.toFixed(2)}px, ${breathe.toFixed(2)}px) ` +
     `rotate(${tilt.toFixed(2)}deg) scaleY(${scaleY.toFixed(4)})`;
 
-  // まばたき
+  // まばたき。opacityは二値化（中間値で開き目が透けるのを防ぐ＝閉じてる間は完全不透明）
   updateBlink(now);
-  blinkEl.style.opacity = blinkValue.toFixed(3);
+  blinkEl.style.opacity = blinkValue > 0.35 ? "1" : "0";
 
   mctx.clearRect(0, 0, mouthCanvas.width, mouthCanvas.height);
   const frame = currentFrame();
@@ -367,6 +373,9 @@ async function startFollow(): Promise<void> {
   if (started) return;
   started = true;
   boot.classList.add("hidden");
+  // 起動直後は待機画面を出す（字幕は隠す）。喋り始めたら切り替わる
+  standbyEl.classList.remove("hidden");
+  subtitleBox.classList.add("hidden");
   scheduleNextBlink(performance.now());
   if (!rafStarted) {
     rafStarted = true;
