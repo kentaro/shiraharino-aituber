@@ -47,8 +47,10 @@ launch_once() {
   echo "$(date '+%T') down/stale -> restart" >> "$SNAP/keepalive.log"
   # 残骸を一掃（run.sh監督ツリー・配信・ブラウザ・音声を全部）
   for p in "$REPO/scripts/r[u]n.sh" "scripts/r[u]n.sh" \
-           "$REPO/scripts/s[t]ream.sh" "scripts/s[t]ream.sh" "audio_[f]eeder" \
-           "x11[g]rab" "X[v]fb :99" "chrome-[p]rofile" "rtmp.*y[o]utube" "http.server 878[0]"; do
+           "$REPO/scripts/s[t]ream.sh" "scripts/s[t]ream.sh" \
+           "content_[l]oop.py" "audio_[f]eeder" \
+           "x11[g]rab" "X[v]fb :[0-9]+" "chrome-[p]rofile" \
+           "rtmp.*y[o]utube" "http.server 878[0]"; do
     pkill -9 -f "$p" 2>/dev/null || true
   done
   pkill -9 -x ffmpeg 2>/dev/null || true

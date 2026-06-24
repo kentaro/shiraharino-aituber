@@ -56,11 +56,13 @@ supervise() {
 
   local name="$1"; shift
   local backoff=2
+  local cpid=""
+  trap '[[ -n "${cpid:-}" ]] && kill "$cpid" 2>/dev/null || true; exit 0' INT TERM
   while true; do
     local start; start=$(date +%s)
     log "[$name] start"
     "$@" >>"$VAR/$name.log" 2>&1 &
-    local cpid=$!
+    cpid=$!
     wait "$cpid"; local rc=$?
     local dur=$(( $(date +%s) - start ))
     log "[$name] exited rc=$rc after ${dur}s"
