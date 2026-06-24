@@ -92,8 +92,10 @@ while true; do
   ensure_voicevox
 
   healthy=0
-  if [ -f "$SNAP/frame.jpg" ]; then
-    age=$(( now - $(stat -c %Y "$SNAP/frame.jpg" 2>/dev/null || echo 0) ))
+  HEALTH_FILE="$SNAP/frame.jpg"
+  [ -f "$REPO/var/ffmpeg.progress" ] && HEALTH_FILE="$REPO/var/ffmpeg.progress"
+  if [ -f "$HEALTH_FILE" ]; then
+    age=$(( now - $(stat -c %Y "$HEALTH_FILE" 2>/dev/null || echo 0) ))
     [ "$age" -lt 40 ] && [ "$LATEST" = "$RUNNING" ] && healthy=1
   fi
 

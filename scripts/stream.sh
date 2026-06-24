@@ -195,7 +195,7 @@ sleep 5
 
 # --- 4.5) スナップショット（SNAPSHOT_DIR 指定時、配信中の画面を定期保存）---
 # 配信中の見え方を URL で確認できるようにする（運用・デバッグ用）。
-if [[ -n "${SNAPSHOT_DIR:-}" ]]; then
+if [[ -n "${SNAPSHOT_DIR:-}" && "${ENABLE_SNAPSHOT:-1}" == "1" ]]; then
   mkdir -p "$SNAPSHOT_DIR"
   ( exec 7>&-; while true; do
       ffmpeg -y -loglevel error -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -i ":${DISPLAY_NUM}.0" \
