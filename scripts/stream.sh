@@ -34,7 +34,8 @@ WEB="$ROOT/web"
 VAR="$ROOT/var"; mkdir -p "$VAR"
 
 MODE="${MODE:-record}"
-WIDTH="${WIDTH:-1280}"; HEIGHT="${HEIGHT:-720}"; FPS="${FPS:-30}"
+WIDTH="${WIDTH:-1280}"; HEIGHT="${HEIGHT:-720}"; FPS="${FPS:-15}"
+PRESET="${PRESET:-ultrafast}"   # 低スペック箱向け（CPU節約）
 DISPLAY_NUM="${DISPLAY_NUM:-99}"
 WEB_PORT="${WEB_PORT:-8780}"
 OUT_FILE="${OUT_FILE:-$VAR/record.mp4}"
@@ -154,7 +155,7 @@ if [[ -n "${SNAPSHOT_DIR:-}" ]]; then
   ( while true; do
       ffmpeg -y -loglevel error -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -i ":${DISPLAY_NUM}.0" \
         -frames:v 1 "$SNAPSHOT_DIR/frame.jpg" 2>/dev/null
-      sleep 5
+      sleep 12
     done ) &
   PIDS+=($!)
 fi
@@ -176,7 +177,7 @@ fi
 COMMON_IN=( -thread_queue_size 1024 -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" "${BGM_IN[@]}" )
 COMMON_ENC=( "${AUDIO_MAP[@]}"
-             -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
+             -c:v libx264 -preset "$PRESET" -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
              -c:a aac -b:a "$ABR" -ar 44100 -ac 2 )
 
 if [[ "$MODE" == "live" ]]; then
