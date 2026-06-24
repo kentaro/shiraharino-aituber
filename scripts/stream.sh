@@ -33,6 +33,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEB="$ROOT/web"
 VAR="$ROOT/var"; mkdir -p "$VAR"
 
+ENV_FILE="${RINO_ENV_FILE:-$VAR/live.env}"
+if [[ "${RINO_LOAD_LIVE_ENV:-1}" == "1" && -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
 # stream.sh 自身でも単一インスタンスを保証する。run.sh/keepalive の
 # supervisor が重複しても、YouTube ingest はここで1本に抑える。
 STREAM_LOCK="${STREAM_LOCK:-/tmp/rino_stream.lock}"

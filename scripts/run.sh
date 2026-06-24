@@ -16,6 +16,14 @@ VAR="$ROOT/var"; mkdir -p "$VAR"
 LOG="$VAR/run.log"
 log() { echo "$(date '+%F %T') $*" | tee -a "$LOG"; }
 
+ENV_FILE="${RINO_ENV_FILE:-$VAR/live.env}"
+if [[ "${RINO_LOAD_LIVE_ENV:-1}" == "1" && -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+fi
+
 # 単一インスタンス保証。keepalive 側にも flock はあるが、手動起動や古い
 # supervisor が混ざっても run.sh 自身が二重起動を拒否する。
 RUN_LOCK="${RUN_LOCK:-/tmp/rino_run.lock}"
