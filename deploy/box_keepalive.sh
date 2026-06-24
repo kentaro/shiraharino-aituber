@@ -14,6 +14,11 @@ set -uo pipefail
 REPO=/opt/data/home/shiraharino-aituber
 SNAP=/opt/data/home/MotionPNGTuber_Player/live_snap
 mkdir -p "$SNAP"
+
+# 同時実行を物理的に1つに絞る（二重起動・重複ingestを根絶）
+exec 9>/tmp/rino_keepalive.lock
+flock -n 9 || exit 0
+
 now=$(date +%s)
 
 # 最新コードを取得（git=整合性保証で relay 破損を受けない）
