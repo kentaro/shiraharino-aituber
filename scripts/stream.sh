@@ -33,6 +33,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WEB="$ROOT/web"
 VAR="$ROOT/var"; mkdir -p "$VAR"
 
+# stream.sh 自身でも単一インスタンスを保証する。run.sh/keepalive の
+# supervisor が重複しても、YouTube ingest はここで1本に抑える。
+STREAM_LOCK="${STREAM_LOCK:-/tmp/rino_stream.lock}"
+exec 7>"$STREAM_LOCK"
+if ! flock -n 7; then
+  echo "[stream] another stream.sh is already active (lock=$STREAM_LOCK) -> wait" >&2
+  flock 7
+  echo "[stream] stream lock acquired" >&2
+fi
+
 MODE="${MODE:-record}"
 WIDTH="${WIDTH:-540}"; HEIGHT="${HEIGHT:-960}"; FPS="${FPS:-12}"
 PRESET="${PRESET:-ultrafast}"   # 低スペック箱向け（CPU節約）
