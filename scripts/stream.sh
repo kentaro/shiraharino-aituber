@@ -222,7 +222,8 @@ if [[ "$MODE" == "live" ]]; then
   # この ffmpeg 以外に YouTube へ送出している ffmpeg を確実に消す（単一ingest保証）
   pkill -9 -f "rtmp.*y[o]utube" 2>/dev/null || true; sleep 1
   echo "[stream] → YouTube Live: ${YT_URL}"
-  ffmpeg -hide_banner -loglevel warning "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
+  ffmpeg -hide_banner -loglevel warning -stats_period 5 -progress "$VAR/ffmpeg.progress" \
+    "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
     -f flv "${YT_URL}/${STREAM_KEY}"
 else
   echo "[stream] → record $OUT_FILE (duration=${DURATION:-inf})"
