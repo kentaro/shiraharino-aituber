@@ -122,7 +122,7 @@ sleep 4
 if [[ -n "${SNAPSHOT_DIR:-}" ]]; then
   mkdir -p "$SNAPSHOT_DIR"
   ( while true; do
-      ffmpeg -y -loglevel error -f x11grab -video_size "${WIDTH}x${HEIGHT}" -i ":${DISPLAY_NUM}.0" \
+      ffmpeg -y -loglevel error -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -i ":${DISPLAY_NUM}.0" \
         -frames:v 1 "$SNAPSHOT_DIR/frame.jpg" 2>/dev/null
       sleep 5
     done ) &
