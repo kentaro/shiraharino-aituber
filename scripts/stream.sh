@@ -90,11 +90,9 @@ PIDS=()
 cleanup() {
   echo "[stream] cleanup..."
   for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
-  # キーパーループの子（chromium/feeder）も確実に始末（重複ingest防止）
-  pkill -9 -f "chrome-[p]rofile" 2>/dev/null || true
-  pkill -9 -f "audio_[f]eeder" 2>/dev/null || true
-  pkill -9 -f "X[v]fb :$DISPLAY_NUM" 2>/dev/null || true
-  pkill -9 -f "http.server ${WEB_PORT%?}[${WEB_PORT: -1}]" 2>/dev/null || true
+  # ここでグローバル pkill しない。古い/失敗した stream.sh の cleanup が、
+  # 現在生きている配信ツリーの Xvfb/chromium を殺して画面停止を起こすため。
+  # 残骸掃除は起動時の単一インスタンス確保後にだけ行う。
   rm -f "$FIFO" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
