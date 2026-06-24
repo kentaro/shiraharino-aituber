@@ -154,7 +154,7 @@ if [[ "$RUN_FEEDER" == "1" ]]; then
   ( exec 7>&-; cd "$ROOT"; while true; do SR=44100 CH=2 python3 -u scripts/audio_feeder.py > "$FIFO" 2>>"$VAR/feeder.log"; echo "[feeder] exited -> restart" >>"$VAR/feeder.log"; sleep 1; done ) &
   PIDS+=($!)
   # 生PCMはサンプル数でタイムスタンプ（rtmp向けに単調）。同期はページ側の lag で取る
-  AUDIO_IN=( -thread_queue_size "$AUDIO_QUEUE_SIZE" -re -f s16le -ar 44100 -ac 2 -i "$FIFO" )
+  AUDIO_IN=( -thread_queue_size "$AUDIO_QUEUE_SIZE" -f s16le -ar 44100 -ac 2 -i "$FIFO" )
   echo "[stream] audio: feeder -> FIFO (PulseAudio不要)"
 else
   echo "[stream] audio: (none) 無音"
