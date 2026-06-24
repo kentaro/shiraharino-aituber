@@ -48,7 +48,8 @@ supervise() {
 log "=== run start (MODE=${MODE:-record} content=$RUN_CONTENT) ==="
 
 if [[ "$RUN_CONTENT" == "1" ]]; then
-  supervise content python3 "$ROOT/scripts/content_loop.py" & pids+=($!)
+  # content_loop は低優先度で（配信の描画/エンコードを最優先にしてVOICEVOX合成に食わせない）
+  supervise content nice -n 19 python3 "$ROOT/scripts/content_loop.py" & pids+=($!)
 fi
 supervise stream bash "$ROOT/scripts/stream.sh" & pids+=($!)
 

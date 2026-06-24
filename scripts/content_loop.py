@@ -160,6 +160,7 @@ def main():
     recent = [s.get("text", "") for s in segs][-8:]
     sys.stderr.write(f"[content] start backend={BACKEND} batch={BATCH} keep={KEEP} existing={len(segs)}\n")
 
+    fail_streak = 0
     while True:
         batch = generate_batch(BATCH, recent)
         added = 0
@@ -169,9 +170,13 @@ def main():
                 continue
             try:
                 wav = synth(text)
+                fail_streak = 0
             except Exception as e:
-                sys.stderr.write(f"[content] voicevox fail: {e}\n")
-                time.sleep(5)
+                fail_streak += 1
+                # 連続失敗時は指数バックオフ（VOICEVOXを叩き続けて負荷を上げない）
+                back = min(90, 8 * fail_streak)
+                sys.stderr.write(f"[content] voicevox fail ({fail_streak}): {e}; backoff {back}s\n")
+                time.sleep(back)
                 continue
             h = hashlib.sha1((str(SPEAKER) + text).encode()).hexdigest()[:10]
             fn = f"seg_{h}.wav"
@@ -196,8 +201,8 @@ def main():
         save_segs(path, segs)
         sys.stderr.write(f"[content] batch +{added} (total {len(segs)})\n")
 
-        # 次バッチまで: 追加分の尺 × バッファ割合だけ待つ（呼び出しを最小化）
-        time.sleep(max(8.0, added * AVG_SEC * BUFFER_RATIO))
+        # 次バッチまで: 追加分の尺 × バッファ割合だけ待つ（最低30s。低スペック箱の保護）
+        time.sleep(max(30.0, added * AVG_SEC * BUFFER_RATIO))
 
 
 if __name__ == "__main__":
