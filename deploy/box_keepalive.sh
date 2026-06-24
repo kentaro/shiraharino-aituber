@@ -20,6 +20,8 @@ set -uo pipefail
 REPO=/opt/data/home/shiraharino-aituber
 SNAP=/opt/data/home/MotionPNGTuber_Player/live_snap
 VOICEVOX_START=/opt/data/scripts/voicevox-start.sh
+VOICEVOX_CHECK_INTERVAL="${VOICEVOX_CHECK_INTERVAL:-120}"
+VOICEVOX_LAST_CHECK=0
 mkdir -p "$SNAP"
 
 # --- 単一インスタンス: このロックをデーモン稼働中ずっと保持する -------------
@@ -57,6 +59,12 @@ launch_once() {
 }
 
 ensure_voicevox() {
+  local now_v
+  now_v=$(date +%s)
+  if [ "$((now_v - VOICEVOX_LAST_CHECK))" -lt "$VOICEVOX_CHECK_INTERVAL" ]; then
+    return 0
+  fi
+  VOICEVOX_LAST_CHECK="$now_v"
   if [ -x "$VOICEVOX_START" ]; then
     "$VOICEVOX_START" >> "$SNAP/voicevox.log" 2>&1 || \
       echo "$(date '+%F %T') voicevox ensure failed rc=$?" >> "$SNAP/keepalive.log"
