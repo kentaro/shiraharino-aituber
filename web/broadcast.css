@@ -363,3 +363,9 @@ html, body {
     font-size: 14px;
   }
 }
+
+@media (max-aspect-ratio: 3/4) and (max-width: 400px) {
+  .stage {
+    transform: translate(-50%, -50%) scale(0.6667);
+  }
+}
