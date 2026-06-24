@@ -170,11 +170,12 @@ LIPSYNC_LAG_MS="${LIPSYNC_LAG_MS:-1800}"   # 口パク遅延(ms)。声と口を�
     nice -n "$CHROME_NICE" "$CHROME" \
       --kiosk --start-fullscreen --no-first-run --no-default-browser-check \
       --disable-infobars --disable-translate --lang=ja \
-      --disable-features=Translate,TranslateUI,TranslateSubFrames,CalculateNativeWinOcclusion \
+      --disable-features=Translate,TranslateUI,TranslateSubFrames,CalculateNativeWinOcclusion,OptimizationGuideModelDownloading,MediaRouter,GlobalMediaControls,InterestFeedContentSuggestions \
       --disable-backgrounding-occluded-windows \
       --no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox \
       --disable-dev-shm-usage \
-      --disable-gpu --disable-gpu-compositing --disable-software-rasterizer \
+      --single-process --renderer-process-limit=1 --disable-site-isolation-trials \
+      --disable-gpu --disable-gpu-compositing --disable-software-rasterizer --disable-vulkan \
       --disable-accelerated-2d-canvas --disable-accelerated-video-decode \
       --disable-accelerated-video-encode --mute-audio \
       --disable-background-networking --disable-sync --disable-extensions \
