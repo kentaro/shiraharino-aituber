@@ -18,7 +18,7 @@
 #   MODE         record | live           (default: record)
 #   STREAM_KEY   YouTube ストリームキー   (live 時必須)
 #   YT_URL       RTMPS ingest            (default: rtmps://a.rtmps.youtube.com/live2)
-#   WIDTH/HEIGHT 解像度                   (default: 960x540)
+#   WIDTH/HEIGHT 解像度                   (default: 540x960 portrait)
 #   FPS          フレームレート           (default: 12)
 #   DISPLAY_NUM  Xvfb ディスプレイ番号    (default: 99)
 #   WEB_PORT     配信ページの待受ポート   (default: 8780)
@@ -34,7 +34,7 @@ WEB="$ROOT/web"
 VAR="$ROOT/var"; mkdir -p "$VAR"
 
 MODE="${MODE:-record}"
-WIDTH="${WIDTH:-960}"; HEIGHT="${HEIGHT:-540}"; FPS="${FPS:-12}"
+WIDTH="${WIDTH:-540}"; HEIGHT="${HEIGHT:-960}"; FPS="${FPS:-12}"
 PRESET="${PRESET:-ultrafast}"   # 低スペック箱向け（CPU節約）
 DISPLAY_NUM="${DISPLAY_NUM:-99}"
 WEB_PORT="${WEB_PORT:-8780}"

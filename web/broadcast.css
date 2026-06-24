@@ -243,3 +243,119 @@ html, body {
   box-shadow: var(--shadow);
 }
 .boot-hint { font-size: 13px; color: var(--blue-deep); }
+
+@media (max-aspect-ratio: 3/4) {
+  .stage {
+    width: 540px;
+    height: 960px;
+    transform: translate(-50%, -50%);
+    background: #dceaf7;
+  }
+  .bg {
+    background-size: auto 100%;
+    background-position: center center;
+  }
+  .char {
+    left: 270px;
+    bottom: 178px;
+    width: 560px;
+    height: 560px;
+  }
+  .topbar {
+    height: 96px;
+    padding: 14px 18px 0;
+    align-items: flex-start;
+  }
+  .title-ja {
+    font-size: 24px;
+    letter-spacing: 0.02em;
+  }
+  .title-en {
+    font-size: 9px;
+    letter-spacing: 0.18em;
+  }
+  .live-block {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  .live-text {
+    font-size: 12px;
+  }
+  .live-sub {
+    display: none;
+  }
+  .clock {
+    top: 104px;
+    right: 18px;
+    padding: 8px 12px;
+    border-radius: 10px;
+  }
+  .clock-time {
+    font-size: 24px;
+  }
+  .clock-date {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+  }
+  .theme-chip {
+    left: 18px;
+    right: 18px;
+    bottom: 206px;
+    max-width: none;
+    padding: 8px 12px;
+  }
+  .theme-label {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+  .theme-text {
+    font-size: 14px;
+  }
+  .vu {
+    left: 18px;
+    bottom: 194px;
+    width: 180px;
+  }
+  .subtitle {
+    left: 18px;
+    right: 18px;
+    bottom: 24px;
+    transform: none;
+    width: auto;
+    min-height: 132px;
+    padding: 14px 18px;
+    border-radius: 14px;
+  }
+  .subtitle-name {
+    font-size: 12px;
+  }
+  .subtitle-text {
+    font-size: 21px;
+    line-height: 1.45;
+    min-height: 92px;
+    -webkit-line-clamp: 3;
+  }
+  .credit {
+    right: 18px;
+    bottom: 170px;
+    font-size: 10px;
+  }
+  .standby {
+    left: 18px;
+    right: 18px;
+    bottom: 24px;
+    transform: none;
+    width: auto;
+  }
+  .standby-card {
+    width: 100%;
+    padding: 16px 24px;
+    border-radius: 14px;
+  }
+  .standby-title {
+    font-size: 22px;
+  }
+  .standby-msg {
+    font-size: 14px;
+  }
+}
