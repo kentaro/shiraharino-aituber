@@ -21,8 +21,12 @@
   GAP_MS       セグメント間の無音    default: 320
   SR/CH        出力 PCM 形式         default: 44100 / 2
   VOICE_UDP_HOST/VOICE_UDP_PORT  指定時は stdout ではなく UDP へ送る
+  MIX_BGM      1 ならBGMをPCM段で混ぜる（ffmpeg入力は1本のまま）
+  BGM_MIX_FILE default: ../web/assets/bgm/lofi_loop.mp3
+  BGM_MIX_VOL  default: 0.13
 """
 import os, sys, json, time, subprocess, threading, socket
+from array import array
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEGDIR = os.path.join(ROOT, "web", "segments")
@@ -38,6 +42,51 @@ WEB = os.path.join(ROOT, "web")
 
 VOICE_UDP_HOST = os.environ.get("VOICE_UDP_HOST")
 VOICE_UDP_PORT = os.environ.get("VOICE_UDP_PORT")
+MIX_BGM = os.environ.get("MIX_BGM", "0") == "1"
+BGM_MIX_FILE = os.environ.get("BGM_MIX_FILE", os.path.join(WEB, "assets", "bgm", "lofi_loop.mp3"))
+BGM_MIX_VOL = float(os.environ.get("BGM_MIX_VOL", "0.13"))
+
+
+class BgmMixer:
+    def __init__(self):
+        self.pcm = b""
+        self.pos = 0
+        self.vol = BGM_MIX_VOL
+        if MIX_BGM and os.path.exists(BGM_MIX_FILE):
+            self.pcm = decode_pcm(BGM_MIX_FILE)
+            sys.stderr.write(f"[feeder] bgm mix file={BGM_MIX_FILE} bytes={len(self.pcm)} vol={self.vol}\n")
+
+    def _next_bytes(self, n):
+        if not self.pcm or n <= 0:
+            return b""
+        out = bytearray()
+        while len(out) < n:
+            take = min(n - len(out), len(self.pcm) - self.pos)
+            out.extend(self.pcm[self.pos:self.pos + take])
+            self.pos = (self.pos + take) % len(self.pcm)
+        return bytes(out)
+
+    def mix(self, pcm):
+        if not self.pcm or not pcm:
+            return pcm
+        bgm = self._next_bytes(len(pcm))
+        voice = array("h")
+        bed = array("h")
+        voice.frombytes(pcm)
+        bed.frombytes(bgm)
+        if sys.byteorder != "little":
+            voice.byteswap()
+            bed.byteswap()
+        for i, v in enumerate(voice):
+            mixed = v + int(bed[i] * self.vol)
+            if mixed > 32767:
+                mixed = 32767
+            elif mixed < -32768:
+                mixed = -32768
+            voice[i] = mixed
+        if sys.byteorder != "little":
+            voice.byteswap()
+        return voice.tobytes()
 
 
 class PcmOut:
@@ -67,6 +116,7 @@ class PcmOut:
 
 
 out = PcmOut()
+bgm_mixer = None
 
 
 def now_ms():
@@ -172,7 +222,10 @@ def write_paced(pcm):
     t = time.time()
     for i in range(0, len(pcm), bytes_per_chunk):
         try:
-            out.write(pcm[i:i + bytes_per_chunk]); out.flush()
+            chunk = pcm[i:i + bytes_per_chunk]
+            if bgm_mixer is not None:
+                chunk = bgm_mixer.mix(chunk)
+            out.write(chunk); out.flush()
         except (BrokenPipeError, ValueError):
             raise SystemExit(0)
         t += CHUNK_MS / 1000
@@ -195,8 +248,10 @@ def set_nowplaying(seg, dur_ms):
 
 
 def main():
+    global bgm_mixer
+    bgm_mixer = BgmMixer()
     target = f"udp://{VOICE_UDP_HOST}:{VOICE_UDP_PORT}" if VOICE_UDP_HOST and VOICE_UDP_PORT else "stdout"
-    sys.stderr.write(f"[feeder] start SR={SR} CH={CH} chunk={CHUNK_MS}ms target={target} playlist={PLAYLIST}\n")
+    sys.stderr.write(f"[feeder] start SR={SR} CH={CH} chunk={CHUNK_MS}ms target={target} mix_bgm={MIX_BGM} playlist={PLAYLIST}\n")
     last_played = None
     while True:
         segs = load_segments()
