@@ -54,9 +54,16 @@ DURATION="${DURATION:-20}"
 YT_URL="${YT_URL:-rtmps://a.rtmps.youtube.com/live2}"
 STREAM_KEY="${STREAM_KEY:-}"
 VBR="${VBR:-2800k}"; ABR="${ABR:-128k}"
+if [[ -z "${VIDEO_BUFSIZE:-}" ]]; then
+  if [[ "$VBR" =~ ^([0-9]+)k$ ]]; then
+    VIDEO_BUFSIZE="$((BASH_REMATCH[1] * 2))k"
+  else
+    VIDEO_BUFSIZE="$VBR"
+  fi
+fi
 VIDEO_QUEUE_SIZE="${VIDEO_QUEUE_SIZE:-32}"
 AUDIO_QUEUE_SIZE="${AUDIO_QUEUE_SIZE:-256}"
-KEYINT_SECONDS="${KEYINT_SECONDS:-1}"
+KEYINT_SECONDS="${KEYINT_SECONDS:-2}"
 RUN_FEEDER="${RUN_FEEDER:-1}"   # 0 にすると音声フィーダを起動しない（無音）
 FIFO="$VAR/audio.fifo"
 CHROME_NICE="${CHROME_NICE:-10}"
@@ -201,12 +208,11 @@ COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
             -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" "${BGM_IN[@]}" )
 COMMON_ENC=( "${AUDIO_MAP[@]}"
-             # CFR(固定フレームレート)で必ず毎秒 FPS 枚を送出する。software描画でグラブが
-             # ムラになっても ffmpeg が複製して埋めるので「受信動画が少ない/バッファ」を防ぐ。
+             # YouTube Live は低遅延RTMPより、固定fpsと安定したVBV/GOPの通常ペーシングを優先する。
              -fps_mode cfr -r "$FPS" -max_muxing_queue_size 1024
-             -c:v libx264 -preset "$PRESET" -tune zerolatency -pix_fmt yuv420p
-             -g $((FPS*KEYINT_SECONDS)) -keyint_min $((FPS*KEYINT_SECONDS)) -sc_threshold 0 -bf 0
-             -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
+             -c:v libx264 -preset "$PRESET" -pix_fmt yuv420p
+             -g $((FPS*KEYINT_SECONDS)) -keyint_min "$FPS" -sc_threshold 0 -bf 2
+             -b:v "$VBR" -maxrate "$VBR" -bufsize "$VIDEO_BUFSIZE"
              -c:a aac -b:a "$ABR" -ar 44100 -ac 2 )
 
 if [[ "$MODE" == "live" ]]; then
@@ -214,7 +220,7 @@ if [[ "$MODE" == "live" ]]; then
   # この ffmpeg 以外に YouTube へ送出している ffmpeg を確実に消す（単一ingest保証）
   pkill -9 -f "rtmp.*y[o]utube" 2>/dev/null || true; sleep 1
   echo "[stream] → YouTube Live: ${YT_URL}"
-  ffmpeg -hide_banner -loglevel warning -flush_packets 1 "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
+  ffmpeg -hide_banner -loglevel warning "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
     -f flv "${YT_URL}/${STREAM_KEY}"
 else
   echo "[stream] → record $OUT_FILE (duration=${DURATION:-inf})"
