@@ -31,7 +31,7 @@
   TARGET           先読みバッファ本数        (default: 4)
   RINO_SPEED/PAUSE 話速/間                    (default: 0.92 / 1.3)
 """
-import os, sys, json, time, hashlib, re, urllib.request, urllib.parse
+import os, sys, json, time, hashlib, re, subprocess, urllib.request, urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from seg_env import wav_envelope
 
@@ -147,6 +147,37 @@ def generate_line(theme, recent):
 
 
 # ---- VOICEVOX リアルタイム合成 ------------------------------------------
+# VOICEVOX 自己回復: 落ちていたら起動スクリプト(冪等)を叩く。
+# box再起動でVOICEVOXが上がらず合成できず無音になる事故の再発防止（content側の依存）。
+VOICEVOX_START = os.environ.get("VOICEVOX_START", "/opt/data/scripts/voicevox-start.sh")
+_last_vv_start = [0.0]
+
+
+def voicevox_up():
+    try:
+        urllib.request.urlopen(VOICEVOX_URL + "/version", timeout=3)
+        return True
+    except Exception:
+        return False
+
+
+def ensure_voicevox():
+    if voicevox_up():
+        return True
+    now = time.time()
+    # 多重起動しないよう間隔を空けて起動（スクリプトは冪等）
+    if now - _last_vv_start[0] > 25 and os.path.exists(VOICEVOX_START):
+        _last_vv_start[0] = now
+        try:
+            subprocess.Popen(["sh", VOICEVOX_START],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+            sys.stderr.write("[content] voicevox down -> launch voicevox-start.sh\n")
+        except Exception as e:
+            sys.stderr.write(f"[content] voicevox start fail: {e}\n")
+    return False
+
+
 def synth(text):
     q = urllib.parse.urlencode({"text": text, "speaker": SPEAKER})
     qr = urllib.request.urlopen(
@@ -201,6 +232,12 @@ def main():
     fail_streak = 0
     sys.stderr.write(f"[content] start backend={BACKEND} TARGET={TARGET}\n")
 
+    # 起動時にVOICEVOXを確実に上げる（落ちていれば起動して立ち上がりを待つ）
+    for _ in range(20):
+        if ensure_voicevox():
+            break
+        time.sleep(3)
+
     while True:
         segs = load_segs()
         done_id = read_done()
@@ -241,7 +278,8 @@ def main():
             wav = synth(text)
         except Exception as e:
             sys.stderr.write(f"[content] voicevox fail: {e}\n")
-            time.sleep(3)
+            ensure_voicevox()   # 落ちていれば起動を試みる（自己回復）
+            time.sleep(4)
             continue
 
         h = hashlib.sha1((str(SPEAKER) + text + str(time.time())).encode()).hexdigest()[:10]
