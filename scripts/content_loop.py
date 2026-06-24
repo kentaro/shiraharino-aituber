@@ -224,10 +224,18 @@ def load_segs():
 
 
 def save_segs(segs):
-    tmp = PLAYLIST + ".tmp"
-    json.dump({"updated": int(time.time()), "speaker": SPEAKER, "segments": segs},
-              open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-    os.replace(tmp, PLAYLIST)
+    # デプロイ(git reset)が web/segments を一瞬消すレースで FileNotFoundError →
+    # content_loop がクラッシュして配信が固まる事故があった。毎回ディレクトリを
+    # 確保し、書き込み失敗は握りつぶして次ループで再試行する（24/7で止めない）。
+    try:
+        os.makedirs(OUT_DIR, exist_ok=True)
+        tmp = PLAYLIST + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"updated": int(time.time()), "speaker": SPEAKER, "segments": segs},
+                      f, ensure_ascii=False, indent=2)
+        os.replace(tmp, PLAYLIST)
+    except OSError as e:
+        sys.stderr.write(f"[content] save_segs retry later: {e}\n")
 
 
 def read_done():
