@@ -229,6 +229,9 @@ COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
 COMMON_ENC=( "${AV_FILTER_MAP[@]}"
              # x11grab のジッタはフィルタ側で均等サンプリングし、YouTubeには安定したCFRで渡す。
              -fps_mode cfr -r "$FPS" -max_muxing_queue_size 1024
+             # Voice FIFO can jitter under load. Do not let the FLV muxer buffer
+             # video for seconds while waiting for a late audio packet.
+             -max_interleave_delta 0 -muxdelay 0 -muxpreload 0
              -c:v libx264 -preset "$PRESET" -pix_fmt yuv420p
              -g $((FPS*KEYINT_SECONDS)) -keyint_min "$FPS" -sc_threshold 0 -bf 0
              -b:v "$VBR" -maxrate "$VBR" -bufsize "$VIDEO_BUFSIZE"
