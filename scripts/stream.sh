@@ -221,7 +221,15 @@ fi
 # 同期は「ページ側の口パク遅延(LIPSYNC_LAG_MS)」で取る。映像は遅らせない
 # （映像を itsoffset すると配信冒頭が黒くなるため）。
 # BGM（ローファイ）を声の下にループ・低音量でミックス。BGM_FILE があれば有効。
-BGM_FILE="${BGM_FILE:-$WEB/assets/bgm/lofi_loop.mp3}"
+if [[ -z "${BGM_FILE+x}" ]]; then
+  if [[ "$RUN_FEEDER" == "1" && "$AUDIO_TRANSPORT" == "udp" ]]; then
+    # Emergency stable path: keep the live ffmpeg graph to video + one voice
+    # audio input. The BGM amix path can make YouTube show sparse video again.
+    BGM_FILE=""
+  else
+    BGM_FILE="$WEB/assets/bgm/lofi_loop.mp3"
+  fi
+fi
 BGM_VOL="${BGM_VOL:-0.13}"
 BGM_IN=()
 AV_FILTER_MAP=( -vf "fps=${FPS}" -map 0:v:0 -map 1:a:0 )
