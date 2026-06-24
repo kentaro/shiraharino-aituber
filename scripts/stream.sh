@@ -38,9 +38,8 @@ VAR="$ROOT/var"; mkdir -p "$VAR"
 STREAM_LOCK="${STREAM_LOCK:-/tmp/rino_stream.lock}"
 exec 7>"$STREAM_LOCK"
 if ! flock -n 7; then
-  echo "[stream] another stream.sh is already active (lock=$STREAM_LOCK) -> wait" >&2
-  flock 7
-  echo "[stream] stream lock acquired" >&2
+  echo "[stream] another stream.sh is already active (lock=$STREAM_LOCK) -> exit" >&2
+  exit 0
 fi
 
 MODE="${MODE:-record}"
