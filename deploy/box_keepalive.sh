@@ -59,8 +59,14 @@ launch_once() {
 while true; do
   now=$(date +%s)
 
-  # 最新コードを取得（git=整合性保証で relay 破損を受けない）
-  cd "$REPO" 2>/dev/null && git fetch -q origin 2>/dev/null && git reset -q --hard origin/main 2>/dev/null
+  # 最新コードを取得。runtime 生成物を巻き戻さないため、remote HEAD が
+  # 進んだ時だけ reset --hard する（20秒ごとの無条件 reset は禁止）。
+  cd "$REPO" 2>/dev/null && git fetch -q origin 2>/dev/null
+  LOCAL_FULL=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo x)
+  REMOTE_FULL=$(git -C "$REPO" rev-parse origin/main 2>/dev/null || echo x)
+  if [ "$LOCAL_FULL" != "$REMOTE_FULL" ] && [ "$REMOTE_FULL" != "x" ]; then
+    git -C "$REPO" reset -q --hard origin/main 2>/dev/null
+  fi
   LATEST=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo x)
   RUNNING=$(cat "$SNAP/running_git" 2>/dev/null || echo none)
 

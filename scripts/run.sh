@@ -16,6 +16,15 @@ VAR="$ROOT/var"; mkdir -p "$VAR"
 LOG="$VAR/run.log"
 log() { echo "$(date '+%F %T') $*" | tee -a "$LOG"; }
 
+# 単一インスタンス保証。keepalive 側にも flock はあるが、手動起動や古い
+# supervisor が混ざっても run.sh 自身が二重起動を拒否する。
+RUN_LOCK="${RUN_LOCK:-/tmp/rino_run.lock}"
+exec 8>"$RUN_LOCK"
+if ! flock -n 8; then
+  log "another run.sh is already active (lock=$RUN_LOCK) -> exit"
+  exit 0
+fi
+
 # content_loop を回すか（音声供給）。0 にすると playlist は外部供給前提。
 RUN_CONTENT="${RUN_CONTENT:-1}"
 
