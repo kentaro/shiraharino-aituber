@@ -178,6 +178,7 @@ fi
 # ソフトGLで chromium がたまにクラッシュしても配信を止めないよう、
 # キーパーループで落ちたら即再起動する（ffmpeg はそのまま流し続ける）。
 LIPSYNC_LAG_MS="${LIPSYNC_LAG_MS:-1800}"   # 口パク遅延(ms)。声と口を合わせる
+CHROME_MAX_AGE_SEC="${CHROME_MAX_AGE_SEC:-0}" # >0 なら描画劣化前に chromium だけ入れ替える
 CHROME_USE_SWIFTSHADER="${CHROME_USE_SWIFTSHADER:-0}"
 if [[ "$CHROME_USE_SWIFTSHADER" == "1" ]]; then
   CHROME_PROCESS_FLAGS=( --renderer-process-limit=2 --disable-site-isolation-trials )
@@ -189,7 +190,11 @@ fi
 ( exec 7>&-; while true; do
     # 毎回フレッシュなプロフィールで起動（クラッシュ後の「profile error」ダイアログを防ぐ）
     rm -rf "$VAR/chrome-profile" 2>/dev/null
-    nice -n "$CHROME_NICE" "$CHROME" \
+    CHROME_RUNNER=( nice -n "$CHROME_NICE" )
+    if [[ "$CHROME_MAX_AGE_SEC" =~ ^[0-9]+$ && "$CHROME_MAX_AGE_SEC" -gt 0 ]]; then
+      CHROME_RUNNER=( timeout --foreground "$CHROME_MAX_AGE_SEC" "${CHROME_RUNNER[@]}" )
+    fi
+    "${CHROME_RUNNER[@]}" "$CHROME" \
       --kiosk --start-fullscreen --no-first-run --no-default-browser-check \
       --disable-infobars --disable-translate --lang=ja \
       --disable-features=Translate,TranslateUI,TranslateSubFrames,CalculateNativeWinOcclusion,OptimizationGuideModelDownloading,MediaRouter,GlobalMediaControls,InterestFeedContentSuggestions \
