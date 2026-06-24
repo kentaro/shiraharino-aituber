@@ -196,7 +196,7 @@ if [[ -f "$BGM_FILE" ]]; then
     -map 0:v:0 -map "[aout]" )
   echo "[stream] BGM: $BGM_FILE (vol=$BGM_VOL)"
 fi
-COMMON_IN=( -fflags nobuffer -thread_queue_size "$VIDEO_QUEUE_SIZE" -use_wallclock_as_timestamps 1
+COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
             -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" "${BGM_IN[@]}" )
 COMMON_ENC=( "${AUDIO_MAP[@]}"
@@ -211,7 +211,7 @@ if [[ "$MODE" == "live" ]]; then
   # この ffmpeg 以外に YouTube へ送出している ffmpeg を確実に消す（単一ingest保証）
   pkill -9 -f "rtmp.*y[o]utube" 2>/dev/null || true; sleep 1
   echo "[stream] → YouTube Live: ${YT_URL}"
-  ffmpeg -hide_banner -loglevel warning -flush_packets 1 -max_interleave_delta 0 "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
+  ffmpeg -hide_banner -loglevel warning -flush_packets 1 "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
     -f flv "${YT_URL}/${STREAM_KEY}"
 else
   echo "[stream] → record $OUT_FILE (duration=${DURATION:-inf})"
