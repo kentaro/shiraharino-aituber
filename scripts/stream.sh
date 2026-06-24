@@ -239,6 +239,7 @@ VIDEO_FILTER="fps=${OUTPUT_FPS}"
 if [[ "$FRAME_HEARTBEAT" == "1" ]]; then
   VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=0:y=0:w=2:h=2:color=white@0.08:t=fill:enable='not(mod(n,2))'"
 fi
+VIDEO_CLOCK_BASE="${VIDEO_CLOCK_BASE:-0}"
 AV_FILTER_MAP=( -vf "$VIDEO_FILTER" -map 0:v:0 -map 1:a:0 )
 if [[ -f "$BGM_FILE" ]]; then
   # -re 必須: ファイル入力を実時間で読む。無いと最速デコードして muxer に溢れ
@@ -252,9 +253,16 @@ fi
 if [[ ! -f "$BGM_FILE" ]]; then
   AV_FILTER_MAP=( -vf "$VIDEO_FILTER" -map 0:v:0 -map 1:a:0 )
 fi
+VIDEO_CLOCK_IN=()
+if [[ "$VIDEO_CLOCK_BASE" == "1" && ! -f "$BGM_FILE" ]]; then
+  # x11grab can pause for seconds under Xvfb/chromium load. Keep a CFR video
+  # clock in ffmpeg and repeat the latest grabbed frame over it.
+  VIDEO_CLOCK_IN=( -f lavfi -i "color=c=black:s=${WIDTH}x${HEIGHT}:r=${OUTPUT_FPS}" )
+  AV_FILTER_MAP=( -filter_complex "[2:v][0:v]overlay=shortest=0:repeatlast=1,${VIDEO_FILTER}[vout]" -map "[vout]" -map 1:a:0 )
+fi
 COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
             -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$GRAB_FPS" -i ":${DISPLAY_NUM}.0"
-            "${AUDIO_IN[@]}" "${BGM_IN[@]}" )
+            "${AUDIO_IN[@]}" "${BGM_IN[@]}" "${VIDEO_CLOCK_IN[@]}" )
 COMMON_ENC=( "${AV_FILTER_MAP[@]}"
              # x11grab のジッタはフィルタ側で均等サンプリングし、YouTubeには安定したCFRで渡す。
              -fps_mode cfr -r "$OUTPUT_FPS" -max_muxing_queue_size 1024
