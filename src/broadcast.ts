@@ -101,9 +101,9 @@ interface NowPlaying {
 let np: NowPlaying | null = null;
 let npId = "";
 
-// まばたき
+// まばたき（壁時計ベース＝負荷でフレームが間引かれても閉じっぱなしにならない）
 let blinkValue = 0;     // 0=開 1=閉
-let blinkPhase: "idle" | "closing" | "opening" = "idle";
+let blinkStart = -1;    // まばたき開始時刻(ms)。-1=開いてidle
 let nextBlinkAt = 0;
 let pendingDoubleBlink = false;
 
@@ -191,12 +191,18 @@ async function pollNowplaying(): Promise<void> {
     np = data;
     if (data.id !== npId) {
       npId = data.id;
-      themeText.textContent = data.theme || "フリートーク";
-      subtitleText.textContent = data.text || "";
-      if (data.text) { // 喋り始めたら待機画面→字幕に切り替え
-        standbyEl.classList.add("hidden");
-        subtitleBox.classList.remove("hidden");
-      }
+      // 字幕/テーマは口パク・音声と同じだけ遅らせて出す（nowplaying は配信パイプラインより
+      // lipsyncLagMs ぶん先行しているため。遅らせないとテロップだけ先に変わってズレる）。
+      const theme = data.theme || "フリートーク";
+      const text = data.text || "";
+      setTimeout(() => {
+        themeText.textContent = theme;
+        subtitleText.textContent = text;
+        if (text) { // 喋り始めたら待機画面→字幕に切り替え
+          standbyEl.classList.add("hidden");
+          subtitleBox.classList.remove("hidden");
+        }
+      }, lipsyncLagMs);
     }
   } catch {
     /* フィーダ未起動でも沈黙 */
@@ -252,35 +258,35 @@ function scheduleNextBlink(now: number): void {
   nextBlinkAt = now + 1400 + Math.random() * 2400;
 }
 function updateBlink(now: number): void {
-  const CLOSE_MS = 70; // 閉じる
-  const OPEN_MS = 110; // 開く
-  if (blinkPhase === "idle") {
+  const CLOSE_MS = 70;  // 閉じる
+  const OPEN_MS = 110;  // 開く
+  const TOTAL = CLOSE_MS + OPEN_MS;
+  // まばたき中でない → 時刻が来たら開始
+  if (blinkStart < 0) {
+    blinkValue = 0;
     if (now >= nextBlinkAt) {
-      blinkPhase = "closing";
+      blinkStart = now;
       pendingDoubleBlink = Math.random() < 0.28; // 28% で二度まばたき
     }
     return;
   }
-  if (blinkPhase === "closing") {
-    blinkValue = Math.min(1, blinkValue + (16 / CLOSE_MS));
-    if (blinkValue >= 1) {
-      blinkValue = 1;
-      blinkPhase = "opening";
+  // まばたき中：開始からの経過“実時間”で開閉量を決める（フレーム数に依存しない）。
+  // 描画が間引かれて次の呼び出しが遅れても、その時の経過時間で正しい位置に飛ぶ＝
+  // 「閉じた状態でストール」しない。経過が尺を超えていれば必ず開いてidleへ戻す。
+  const e = now - blinkStart;
+  if (e >= TOTAL) {
+    blinkValue = 0;
+    blinkStart = -1;
+    if (pendingDoubleBlink) {
+      pendingDoubleBlink = false;
+      nextBlinkAt = now + 130; // すぐもう一度
+    } else {
+      scheduleNextBlink(now);
     }
-    return;
-  }
-  if (blinkPhase === "opening") {
-    blinkValue = Math.max(0, blinkValue - (16 / OPEN_MS));
-    if (blinkValue <= 0) {
-      blinkValue = 0;
-      blinkPhase = "idle";
-      if (pendingDoubleBlink) {
-        pendingDoubleBlink = false;
-        nextBlinkAt = now + 130; // すぐもう一度
-      } else {
-        scheduleNextBlink(now);
-      }
-    }
+  } else if (e < CLOSE_MS) {
+    blinkValue = e / CLOSE_MS;          // 0→1（閉じる）
+  } else {
+    blinkValue = 1 - (e - CLOSE_MS) / OPEN_MS; // 1→0（開く）
   }
 }
 

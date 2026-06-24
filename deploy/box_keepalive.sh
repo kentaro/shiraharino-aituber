@@ -1,62 +1,82 @@
 #!/usr/bin/env bash
 # =========================================================================
-# box 用 自己修復 keepalive（git 経由で配布＝relay破損を受けない）
+# box 用 自己修復 keepalive デーモン（git 経由で配布＝relay破損を受けない）
 #
-#   死活判定はスナップショットの鮮度で行う（pgrep の namespace 問題を回避）。
-#   - 直近40秒以内にフレーム更新があれば健全 → 何もしない
-#   - 起動直後(75秒未満)は立ち上げ中 → 待つ
-#   - それ以外（落ちている）→ 残骸を全部kill してから 1本だけ起動
+#   ★単一インスタンス保証の要：
+#     flock を「デーモンの生涯ずっと保持」する。よって2本目を起動しても
+#     flock -n が即失敗して何もせず終了する＝supervisorが二重に立つことが
+#     物理的に起きない（重複ingest・暴走の根絶）。
 #
-#   これにより「単一インスタンス」を保証し、重複ingest/暴走を防ぐ。
-#   cron は 1分毎にこれを呼ぶ（ASCIIブートストラップ経由）。
+#   20秒ごとに健全性を確認し、落ちていれば残骸を一掃して1本だけ起動する。
+#   死活判定はスナップショット(frame.jpg)の鮮度で行う（pgrepのnamespace問題回避）。
+#   - 直近40秒以内にフレーム更新あり かつ コード最新 → 何もしない
+#   - 起動直後(75秒未満) → 立ち上げ中として待つ
+#   - それ以外（落ちている/版が古い）→ 全部killして1本だけ起動
+#
+#   起動方法（ブートストラップ rino_launch.sh から）:  bash box_keepalive.sh
+#   多重起動しても安全（2本目以降は即exit）。
 # =========================================================================
 set -uo pipefail
 REPO=/opt/data/home/shiraharino-aituber
 SNAP=/opt/data/home/MotionPNGTuber_Player/live_snap
 mkdir -p "$SNAP"
 
-# 同時実行を物理的に1つに絞る（二重起動・重複ingestを根絶）
+# --- 単一インスタンス: このロックをデーモン稼働中ずっと保持する -------------
 exec 9>/tmp/rino_keepalive.lock
-flock -n 9 || exit 0
+if ! flock -n 9; then
+  echo "$(date '+%F %T') keepalive already running -> exit" >> "$SNAP/keepalive.log"
+  exit 0
+fi
+echo "$(date '+%F %T') keepalive daemon start pid=$$" >> "$SNAP/keepalive.log"
 
-now=$(date +%s)
+# 子の配信を道連れにしないため、TERM受領時は run.sh ツリーごと畳む
+cleanup() {
+  echo "$(date '+%F %T') keepalive stopping" >> "$SNAP/keepalive.log"
+  pkill -9 -f "$REPO/scripts/run.sh" 2>/dev/null || true
+  exit 0
+}
+trap cleanup INT TERM
 
-# 最新コードを取得（git=整合性保証で relay 破損を受けない）
-cd "$REPO" 2>/dev/null && git fetch -q origin 2>/dev/null && git reset -q --hard origin/main 2>/dev/null
-LATEST=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo x)
-RUNNING=$(cat "$SNAP/running_git" 2>/dev/null || echo none)
+launch_once() {
+  echo "$(date '+%T') down/stale -> restart" >> "$SNAP/keepalive.log"
+  # 残骸を一掃（run.sh監督ツリー・配信・ブラウザ・音声を全部）
+  for p in "$REPO/scripts/run.sh" "$REPO/scripts/stream.sh" "audio_feeder" \
+           "x11grab" "Xvfb :99" "chrome-profile" "rtmp.*youtube" "http.server 8780"; do
+    pkill -9 -f "$p" 2>/dev/null || true
+  done
+  pkill -9 -x ffmpeg 2>/dev/null || true
+  rm -f "$REPO/var/audio.fifo" 2>/dev/null || true
+  sleep 3
+  cd "$REPO" || return 1
+  set -a; [ -f var/live.env ] && . var/live.env; set +a
+  date +%s > "$SNAP/launched_at"
+  MODE=live RUN_CONTENT="${RUN_CONTENT:-0}" SNAPSHOT_DIR="$SNAP" \
+    setsid bash scripts/run.sh > var/live.log 2>&1 < /dev/null &
+  echo "$(date '+%T') git=$(git rev-parse --short HEAD 2>/dev/null) launched pid=$!" >> "$SNAP/keepalive.log"
+}
 
-# 0) 配信中だが「コード版が古い」→ 最新へ入れ替えるため強制再起動
-if [ "$LATEST" != "$RUNNING" ] && [ -f "$SNAP/launched_at" ]; then
-  la=$(( now - $(cat "$SNAP/launched_at" 2>/dev/null || echo 0) ))
-  if [ "$la" -ge 75 ]; then
-    echo "$(date '+%T') version $RUNNING -> $LATEST, restart" >> "$SNAP/keepalive.log"
-    rm -f "$SNAP/frame.jpg"   # 健全判定を外して下の再起動へ進める
+# --- 監視ループ（このプロセスは常駐し、ロックを離さない） -----------------
+while true; do
+  now=$(date +%s)
+
+  # 最新コードを取得（git=整合性保証で relay 破損を受けない）
+  cd "$REPO" 2>/dev/null && git fetch -q origin 2>/dev/null && git reset -q --hard origin/main 2>/dev/null
+  LATEST=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo x)
+  RUNNING=$(cat "$SNAP/running_git" 2>/dev/null || echo none)
+
+  healthy=0
+  if [ -f "$SNAP/frame.jpg" ]; then
+    age=$(( now - $(stat -c %Y "$SNAP/frame.jpg" 2>/dev/null || echo 0) ))
+    [ "$age" -lt 40 ] && [ "$LATEST" = "$RUNNING" ] && healthy=1
   fi
-fi
 
-# 1) 健全（スナップショットが新しい かつ コード版も最新）→ 触らない
-if [ -f "$SNAP/frame.jpg" ] && [ "$LATEST" = "$RUNNING" ]; then
-  age=$(( now - $(stat -c %Y "$SNAP/frame.jpg" 2>/dev/null || echo 0) ))
-  [ "$age" -lt 40 ] && exit 0
-fi
-# 2) 起動直後 → 立ち上げ待ち
-if [ -f "$SNAP/launched_at" ]; then
-  la=$(( now - $(cat "$SNAP/launched_at" 2>/dev/null || echo 0) ))
-  [ "$la" -lt 75 ] && exit 0
-fi
+  if [ "$healthy" = "1" ]; then
+    :   # 健全 → 触らない
+  elif [ -f "$SNAP/launched_at" ] && [ "$(( now - $(cat "$SNAP/launched_at" 2>/dev/null || echo 0) ))" -lt 75 ]; then
+    :   # 起動直後 → 立ち上げ待ち
+  else
+    launch_once
+  fi
 
-# 3) 落ちている → 残骸を一掃して1本だけ起動
-echo "$(date '+%T') down -> restart" >> "$SNAP/keepalive.log"
-for p in "scripts/run.sh" "scripts/stream.sh" "audio_feeder" "x11grab" "Xvfb :99" \
-         "chrome-profile" "rtmp.*youtube" "http.server 8780"; do
-  pkill -9 -f "$p" 2>/dev/null || true
+  sleep 20
 done
-rm -f "$REPO/var/audio.fifo" 2>/dev/null || true
-sleep 3
-cd "$REPO" || exit 1
-set -a; [ -f var/live.env ] && . var/live.env; set +a
-echo "$now" > "$SNAP/launched_at"
-MODE=live RUN_CONTENT="${RUN_CONTENT:-0}" SNAPSHOT_DIR="$SNAP" \
-  setsid bash scripts/run.sh > var/live.log 2>&1 < /dev/null &
-echo "$(date '+%T') git=$(git rev-parse --short HEAD 2>/dev/null) launched pid=$!" >> "$SNAP/keepalive.log"

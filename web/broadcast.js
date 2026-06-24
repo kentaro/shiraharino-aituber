@@ -47,7 +47,7 @@
   var np = null;
   var npId = "";
   var blinkValue = 0;
-  var blinkPhase = "idle";
+  var blinkStart = -1;
   var nextBlinkAt = 0;
   var pendingDoubleBlink = false;
   var queue = [];
@@ -124,12 +124,16 @@
       np = data;
       if (data.id !== npId) {
         npId = data.id;
-        themeText.textContent = data.theme || "\u30D5\u30EA\u30FC\u30C8\u30FC\u30AF";
-        subtitleText.textContent = data.text || "";
-        if (data.text) {
-          standbyEl.classList.add("hidden");
-          subtitleBox.classList.remove("hidden");
-        }
+        const theme = data.theme || "\u30D5\u30EA\u30FC\u30C8\u30FC\u30AF";
+        const text = data.text || "";
+        setTimeout(() => {
+          themeText.textContent = theme;
+          subtitleText.textContent = text;
+          if (text) {
+            standbyEl.classList.add("hidden");
+            subtitleBox.classList.remove("hidden");
+          }
+        }, lipsyncLagMs);
       }
     } catch {
     }
@@ -169,33 +173,29 @@
   function updateBlink(now) {
     const CLOSE_MS = 70;
     const OPEN_MS = 110;
-    if (blinkPhase === "idle") {
+    const TOTAL = CLOSE_MS + OPEN_MS;
+    if (blinkStart < 0) {
+      blinkValue = 0;
       if (now >= nextBlinkAt) {
-        blinkPhase = "closing";
+        blinkStart = now;
         pendingDoubleBlink = Math.random() < 0.28;
       }
       return;
     }
-    if (blinkPhase === "closing") {
-      blinkValue = Math.min(1, blinkValue + 16 / CLOSE_MS);
-      if (blinkValue >= 1) {
-        blinkValue = 1;
-        blinkPhase = "opening";
+    const e = now - blinkStart;
+    if (e >= TOTAL) {
+      blinkValue = 0;
+      blinkStart = -1;
+      if (pendingDoubleBlink) {
+        pendingDoubleBlink = false;
+        nextBlinkAt = now + 130;
+      } else {
+        scheduleNextBlink(now);
       }
-      return;
-    }
-    if (blinkPhase === "opening") {
-      blinkValue = Math.max(0, blinkValue - 16 / OPEN_MS);
-      if (blinkValue <= 0) {
-        blinkValue = 0;
-        blinkPhase = "idle";
-        if (pendingDoubleBlink) {
-          pendingDoubleBlink = false;
-          nextBlinkAt = now + 130;
-        } else {
-          scheduleNextBlink(now);
-        }
-      }
+    } else if (e < CLOSE_MS) {
+      blinkValue = e / CLOSE_MS;
+    } else {
+      blinkValue = 1 - (e - CLOSE_MS) / OPEN_MS;
     }
   }
   var jstTime = new Intl.DateTimeFormat("en-GB", {
