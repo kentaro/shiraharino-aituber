@@ -209,9 +209,8 @@ COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
             -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" "${BGM_IN[@]}" )
 COMMON_ENC=( "${AUDIO_MAP[@]}"
-             # x11grab の壁時計PTSがジッタる環境ではCFR補正が複製フレームを量産する。
-             # 入力側の -framerate を基準にし、muxer直前ではフレーム複製を避ける。
-             -fps_mode passthrough -max_muxing_queue_size 1024
+             # x11grab のジッタはフィルタ側で均等サンプリングし、YouTubeには安定したCFRで渡す。
+             -vf "fps=${FPS}" -fps_mode cfr -r "$FPS" -max_muxing_queue_size 1024
              -c:v libx264 -preset "$PRESET" -pix_fmt yuv420p
              -g $((FPS*KEYINT_SECONDS)) -keyint_min "$FPS" -sc_threshold 0 -bf 2
              -b:v "$VBR" -maxrate "$VBR" -bufsize "$VIDEO_BUFSIZE"
