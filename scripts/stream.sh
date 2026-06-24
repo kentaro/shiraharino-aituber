@@ -53,6 +53,8 @@ DURATION="${DURATION:-20}"
 YT_URL="${YT_URL:-rtmps://a.rtmps.youtube.com/live2}"
 STREAM_KEY="${STREAM_KEY:-}"
 VBR="${VBR:-2800k}"; ABR="${ABR:-128k}"
+VIDEO_QUEUE_SIZE="${VIDEO_QUEUE_SIZE:-32}"
+AUDIO_QUEUE_SIZE="${AUDIO_QUEUE_SIZE:-256}"
 RUN_FEEDER="${RUN_FEEDER:-1}"   # 0 にすると音声フィーダを起動しない（無音）
 FIFO="$VAR/audio.fifo"
 CHROME_NICE="${CHROME_NICE:-10}"
@@ -127,7 +129,7 @@ if [[ "$RUN_FEEDER" == "1" ]]; then
   ( exec 7>&-; cd "$ROOT"; while true; do SR=44100 CH=2 python3 -u scripts/audio_feeder.py > "$FIFO" 2>>"$VAR/feeder.log"; echo "[feeder] exited -> restart" >>"$VAR/feeder.log"; sleep 1; done ) &
   PIDS+=($!)
   # 生PCMはサンプル数でタイムスタンプ（rtmp向けに単調）。同期はページ側の lag で取る
-  AUDIO_IN=( -thread_queue_size 1024 -f s16le -ar 44100 -ac 2 -i "$FIFO" )
+  AUDIO_IN=( -thread_queue_size "$AUDIO_QUEUE_SIZE" -f s16le -ar 44100 -ac 2 -i "$FIFO" )
   echo "[stream] audio: feeder -> FIFO (PulseAudio不要)"
 else
   echo "[stream] audio: (none) 無音"
@@ -193,13 +195,14 @@ if [[ -f "$BGM_FILE" ]]; then
     -map 0:v:0 -map "[aout]" )
   echo "[stream] BGM: $BGM_FILE (vol=$BGM_VOL)"
 fi
-COMMON_IN=( -thread_queue_size 1024 -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
+COMMON_IN=( -fflags nobuffer -thread_queue_size "$VIDEO_QUEUE_SIZE" -use_wallclock_as_timestamps 1
+            -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" "${BGM_IN[@]}" )
 COMMON_ENC=( "${AUDIO_MAP[@]}"
              # CFR(固定フレームレート)で必ず毎秒 FPS 枚を送出する。software描画でグラブが
              # ムラになっても ffmpeg が複製して埋めるので「受信動画が少ない/バッファ」を防ぐ。
              -fps_mode cfr -r "$FPS" -max_muxing_queue_size 1024
-             -c:v libx264 -preset "$PRESET" -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
+             -c:v libx264 -preset "$PRESET" -tune zerolatency -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
              -c:a aac -b:a "$ABR" -ar 44100 -ac 2 )
 
 if [[ "$MODE" == "live" ]]; then
@@ -207,7 +210,7 @@ if [[ "$MODE" == "live" ]]; then
   # この ffmpeg 以外に YouTube へ送出している ffmpeg を確実に消す（単一ingest保証）
   pkill -9 -f "rtmp.*y[o]utube" 2>/dev/null || true; sleep 1
   echo "[stream] → YouTube Live: ${YT_URL}"
-  ffmpeg -hide_banner -loglevel warning "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
+  ffmpeg -hide_banner -loglevel warning -flush_packets 1 -max_interleave_delta 0 "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
     -f flv "${YT_URL}/${STREAM_KEY}"
 else
   echo "[stream] → record $OUT_FILE (duration=${DURATION:-inf})"
