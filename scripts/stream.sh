@@ -115,6 +115,7 @@ pkill -9 -f "audio_[f]eeder" 2>/dev/null || true
 pkill -9 -f "x11[g]rab" 2>/dev/null || true
 pkill -9 -f "X[v]fb :$DISPLAY_NUM" 2>/dev/null || true
 pkill -9 -f "http.server ${WEB_PORT%?}[${WEB_PORT: -1}]" 2>/dev/null || true
+rm -f "/tmp/.X${DISPLAY_NUM}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM}" 2>/dev/null || true
 sleep 1
 
 # 起動したコードの git 版を記録（keepalive の版チェック用）
@@ -134,7 +135,15 @@ sleep 1
   >"$VAR/xvfb.log" 2>&1 &
 PIDS+=($!)
 export DISPLAY=":$DISPLAY_NUM"
-sleep 1.5
+for _ in {1..30}; do
+  [[ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]] && break
+  sleep 0.1
+done
+if [[ ! -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]]; then
+  echo "[stream] Xvfb failed to create display :$DISPLAY_NUM" >&2
+  tail -40 "$VAR/xvfb.log" >&2 2>/dev/null || true
+  exit 1
+fi
 
 # --- 3) 音声フィーダ（別経路）: playlist の wav を PCM で FIFO に供給 --
 AUDIO_IN=( -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 )
