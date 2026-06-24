@@ -86,6 +86,12 @@ pkill -9 -f "Xvfb :$DISPLAY_NUM" 2>/dev/null || true
 pkill -9 -f "http.server $WEB_PORT" 2>/dev/null || true
 sleep 1
 
+# 起動したコードの git 版を記録（keepalive の版チェック用）
+if [[ -n "${SNAPSHOT_DIR:-}" ]]; then
+  mkdir -p "$SNAPSHOT_DIR"
+  git -C "$ROOT" rev-parse --short HEAD 2>/dev/null > "$SNAPSHOT_DIR/running_git" || true
+fi
+
 # --- 1) 配信ページを HTTP 配信 ----------------------------------------
 ( cd "$WEB" && exec python3 -m http.server "$WEB_PORT" --bind 127.0.0.1 ) \
   >"$VAR/web.log" 2>&1 &

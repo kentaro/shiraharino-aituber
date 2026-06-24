@@ -16,8 +16,22 @@ SNAP=/opt/data/home/MotionPNGTuber_Player/live_snap
 mkdir -p "$SNAP"
 now=$(date +%s)
 
-# 1) 健全（スナップショットが新しい）→ 触らない
-if [ -f "$SNAP/frame.jpg" ]; then
+# 最新コードを取得（git=整合性保証で relay 破損を受けない）
+cd "$REPO" 2>/dev/null && git fetch -q origin 2>/dev/null && git reset -q --hard origin/main 2>/dev/null
+LATEST=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo x)
+RUNNING=$(cat "$SNAP/running_git" 2>/dev/null || echo none)
+
+# 0) 配信中だが「コード版が古い」→ 最新へ入れ替えるため強制再起動
+if [ "$LATEST" != "$RUNNING" ] && [ -f "$SNAP/launched_at" ]; then
+  la=$(( now - $(cat "$SNAP/launched_at" 2>/dev/null || echo 0) ))
+  if [ "$la" -ge 75 ]; then
+    echo "$(date '+%T') version $RUNNING -> $LATEST, restart" >> "$SNAP/keepalive.log"
+    rm -f "$SNAP/frame.jpg"   # 健全判定を外して下の再起動へ進める
+  fi
+fi
+
+# 1) 健全（スナップショットが新しい かつ コード版も最新）→ 触らない
+if [ -f "$SNAP/frame.jpg" ] && [ "$LATEST" = "$RUNNING" ]; then
   age=$(( now - $(stat -c %Y "$SNAP/frame.jpg" 2>/dev/null || echo 0) ))
   [ "$age" -lt 40 ] && exit 0
 fi
