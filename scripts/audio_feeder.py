@@ -9,8 +9,8 @@
       その先頭を捨てる合図）。先頭が捨てられて次のセグメントが現れたら再生。
     - つまり「再生したものは二度と流れない」＝反復しない。常に新鮮な台本だけが流れる。
 
-  再生は PCM(s16le/44100/stereo) を stdout にリアルタイムペースで流し、
-  stream.sh が FIFO 経由で ffmpeg の音声入力に渡す。同時に nowplaying.json に
+  再生は PCM(s16le/44100/stereo) を stdout または UDP にリアルタイムペースで流し、
+  stream.sh が ffmpeg の音声入力に渡す。同時に nowplaying.json に
   「いま再生中のセグメントと開始時刻(epoch ms)」を書く。配信ページはそれを見て
   env(エンベロープ) で口パクする（ブラウザ側で音声を鳴らさない＝完全同期）。
 
@@ -20,8 +20,9 @@
   DONE_FILE    default: ../web/segments/done.json   （再生完了idの合図）
   GAP_MS       セグメント間の無音    default: 320
   SR/CH        出力 PCM 形式         default: 44100 / 2
+  VOICE_UDP_HOST/VOICE_UDP_PORT  指定時は stdout ではなく UDP へ送る
 """
-import os, sys, json, time, subprocess, threading
+import os, sys, json, time, subprocess, threading, socket
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEGDIR = os.path.join(ROOT, "web", "segments")
@@ -31,11 +32,35 @@ DONE_FILE = os.environ.get("DONE_FILE", os.path.join(SEGDIR, "done.json"))
 GAP_MS = int(os.environ.get("GAP_MS", "320"))
 SR = int(os.environ.get("SR", "44100"))
 CH = int(os.environ.get("CH", "2"))
-CHUNK_MS = 100
+CHUNK_MS = int(os.environ.get("CHUNK_MS", "100"))
 BYTES_PER_SAMPLE = 2
 WEB = os.path.join(ROOT, "web")
 
-out = sys.stdout.buffer
+VOICE_UDP_HOST = os.environ.get("VOICE_UDP_HOST")
+VOICE_UDP_PORT = os.environ.get("VOICE_UDP_PORT")
+
+
+class PcmOut:
+    def __init__(self):
+        self._udp = None
+        if VOICE_UDP_HOST and VOICE_UDP_PORT:
+            self._udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._udp.connect((VOICE_UDP_HOST, int(VOICE_UDP_PORT)))
+
+    def write(self, data):
+        if not data:
+            return
+        if self._udp:
+            self._udp.send(data)
+        else:
+            sys.stdout.buffer.write(data)
+
+    def flush(self):
+        if not self._udp:
+            sys.stdout.buffer.flush()
+
+
+out = PcmOut()
 
 
 def now_ms():
@@ -164,7 +189,8 @@ def set_nowplaying(seg, dur_ms):
 
 
 def main():
-    sys.stderr.write(f"[feeder] start SR={SR} CH={CH} playlist={PLAYLIST}\n")
+    target = f"udp://{VOICE_UDP_HOST}:{VOICE_UDP_PORT}" if VOICE_UDP_HOST and VOICE_UDP_PORT else "stdout"
+    sys.stderr.write(f"[feeder] start SR={SR} CH={CH} chunk={CHUNK_MS}ms target={target} playlist={PLAYLIST}\n")
     last_played = None
     while True:
         segs = load_segments()

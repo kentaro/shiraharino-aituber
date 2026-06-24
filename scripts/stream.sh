@@ -74,6 +74,8 @@ VIDEO_QUEUE_SIZE="${VIDEO_QUEUE_SIZE:-180}"
 AUDIO_QUEUE_SIZE="${AUDIO_QUEUE_SIZE:-256}"
 KEYINT_SECONDS="${KEYINT_SECONDS:-1}"
 RUN_FEEDER="${RUN_FEEDER:-1}"   # 0 にすると音声フィーダを起動しない（無音）
+AUDIO_TRANSPORT="${AUDIO_TRANSPORT:-udp}" # udp | fifo
+VOICE_UDP_PORT="${VOICE_UDP_PORT:-31337}"
 FIFO="$VAR/audio.fifo"
 CHROME_NICE="${CHROME_NICE:-15}"
 SNAPSHOT_INTERVAL="${SNAPSHOT_INTERVAL:-20}"
@@ -145,17 +147,26 @@ if [[ ! -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]]; then
   exit 1
 fi
 
-# --- 3) 音声フィーダ（別経路）: playlist の wav を PCM で FIFO に供給 --
+# --- 3) 音声フィーダ（別経路）: playlist の wav を PCM で供給 ------
 AUDIO_IN=( -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 )
 if [[ "$RUN_FEEDER" == "1" ]]; then
-  rm -f "$FIFO"; mkfifo "$FIFO"
-  # フィーダは FIFO に書き込み（読み手= ffmpeg が開くまでブロック）。
-  # -u でアンバッファ化し PCM を確実に流す。落ちても再起動。
-  ( exec 7>&-; cd "$ROOT"; while true; do SR=44100 CH=2 python3 -u scripts/audio_feeder.py > "$FIFO" 2>>"$VAR/feeder.log"; echo "[feeder] exited -> restart" >>"$VAR/feeder.log"; sleep 1; done ) &
-  PIDS+=($!)
-  # 生PCMはサンプル数でタイムスタンプ（rtmp向けに単調）。同期はページ側の lag で取る
-  AUDIO_IN=( -thread_queue_size "$AUDIO_QUEUE_SIZE" -f s16le -ar 44100 -ac 2 -i "$FIFO" )
-  echo "[stream] audio: feeder -> FIFO (PulseAudio不要)"
+  if [[ "$AUDIO_TRANSPORT" == "udp" ]]; then
+    # FIFO は ffmpeg 側の読み詰まりがフィーダへ backpressure し、映像も巻き込む。
+    # localhost UDP は声パケットを落とせるため、映像の安定性を優先できる。
+    ( exec 7>&-; cd "$ROOT"; while true; do SR=44100 CH=2 CHUNK_MS=20 VOICE_UDP_HOST=127.0.0.1 VOICE_UDP_PORT="$VOICE_UDP_PORT" python3 -u scripts/audio_feeder.py >/dev/null 2>>"$VAR/feeder.log"; echo "[feeder] exited -> restart" >>"$VAR/feeder.log"; sleep 1; done ) &
+    PIDS+=($!)
+    AUDIO_IN=( -thread_queue_size "$AUDIO_QUEUE_SIZE" -f s16le -ar 44100 -ac 2 -i "udp://127.0.0.1:${VOICE_UDP_PORT}?listen=1&fifo_size=1000000&overrun_nonfatal=1" )
+    echo "[stream] audio: feeder -> UDP 127.0.0.1:${VOICE_UDP_PORT} (PulseAudio不要)"
+  else
+    rm -f "$FIFO"; mkfifo "$FIFO"
+    # フィーダは FIFO に書き込み（読み手= ffmpeg が開くまでブロック）。
+    # -u でアンバッファ化し PCM を確実に流す。落ちても再起動。
+    ( exec 7>&-; cd "$ROOT"; while true; do SR=44100 CH=2 python3 -u scripts/audio_feeder.py > "$FIFO" 2>>"$VAR/feeder.log"; echo "[feeder] exited -> restart" >>"$VAR/feeder.log"; sleep 1; done ) &
+    PIDS+=($!)
+    # 生PCMはサンプル数でタイムスタンプ（rtmp向けに単調）。同期はページ側の lag で取る
+    AUDIO_IN=( -thread_queue_size "$AUDIO_QUEUE_SIZE" -f s16le -ar 44100 -ac 2 -i "$FIFO" )
+    echo "[stream] audio: feeder -> FIFO (PulseAudio不要)"
+  fi
 else
   echo "[stream] audio: (none) 無音"
 fi
