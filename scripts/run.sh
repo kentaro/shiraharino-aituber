@@ -18,10 +18,11 @@ log() { echo "$(date '+%F %T') $*" | tee -a "$LOG"; }
 
 ENV_FILE="${RINO_ENV_FILE:-$VAR/live.env}"
 if [[ "${RINO_LOAD_LIVE_ENV:-1}" == "1" && -f "$ENV_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "$ENV_FILE"
-  set +a
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    [[ -z "${!key+x}" ]] || continue
+    export "$key=$value"
+  done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE")
 fi
 
 # 単一インスタンス保証。keepalive 側にも flock はあるが、手動起動や古い
