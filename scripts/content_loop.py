@@ -59,6 +59,14 @@ PERSONA = (
 )
 THEMES = ["観測ログ", "今日のことば", "テック雑記", "夜のひとりごと",
           "宇宙と時間", "人間観察", "学びのメモ", "季節のうつろい", "配信のあいま"]
+BRIDGES = [
+    "その余韻を、もう少しだけ眺めていたいですね。",
+    "いまの気配を、そっと次の言葉につないでみます。",
+    "その小さな揺れも、今日の観測に残しておきましょう。",
+    "答えを急がずに、少しだけ耳を澄ませてみますね。",
+    "そんなふうに考える時間も、案外わるくないものです。",
+    "ここから見える景色を、もう一度ゆっくり確かめます。",
+]
 
 
 # ---- 生成（1本ずつ・直前の語りを受けて“展開”させる） --------------------
@@ -159,6 +167,17 @@ def generate_line(theme, recent, depth=0):
             continue
         # 短すぎ/長すぎ(テロップ溢れ)/直近重複は弾く
         if t and 6 <= len(t) <= 46 and t not in recent:
+            return t
+    return ""
+
+
+def fallback_line(recent):
+    """LLMが空を返し続けた時だけ使う短いブリッジ。長い無音を避けるための保険。"""
+    seed = "|".join(recent[-3:]) + str(int(time.time() // 60))
+    start = int(hashlib.sha1(seed.encode()).hexdigest()[:8], 16)
+    for i in range(len(BRIDGES)):
+        t = BRIDGES[(start + i) % len(BRIDGES)]
+        if t not in recent:
             return t
     return ""
 
@@ -292,7 +311,24 @@ def main():
         text = generate_line(theme, recent, depth=since_theme)
         if not text:
             fail_streak += 1
-            back = min(20, 2 * fail_streak)  # 失敗が続いてもVOICEVOXは叩かず待つだけ
+            if fail_streak >= int(os.environ.get("FALLBACK_AFTER_EMPTY", "2")):
+                text = fallback_line(recent)
+                if text:
+                    sys.stderr.write(f"[content] gen fallback after empty={fail_streak}: {text}\n")
+                    fail_streak = 0
+                else:
+                    back = min(int(os.environ.get("GEN_EMPTY_MAX_WAIT", "6")), 2 * fail_streak)
+                    sys.stderr.write(f"[content] gen empty ({fail_streak}); wait {back}s\n")
+                    time.sleep(back)
+                    continue
+            else:
+                back = min(int(os.environ.get("GEN_EMPTY_MAX_WAIT", "6")), 2 * fail_streak)
+                sys.stderr.write(f"[content] gen empty ({fail_streak}); wait {back}s\n")
+                time.sleep(back)
+                continue
+        if not text:
+            fail_streak += 1
+            back = min(int(os.environ.get("GEN_EMPTY_MAX_WAIT", "6")), 2 * fail_streak)
             sys.stderr.write(f"[content] gen empty ({fail_streak}); wait {back}s\n")
             time.sleep(back)
             continue
