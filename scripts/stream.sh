@@ -212,7 +212,7 @@ COMMON_ENC=( "${AUDIO_MAP[@]}"
              # x11grab のジッタはフィルタ側で均等サンプリングし、YouTubeには安定したCFRで渡す。
              -vf "fps=${FPS}" -fps_mode cfr -r "$FPS" -max_muxing_queue_size 1024
              -c:v libx264 -preset "$PRESET" -pix_fmt yuv420p
-             -g $((FPS*KEYINT_SECONDS)) -keyint_min "$FPS" -sc_threshold 0 -bf 2
+             -g $((FPS*KEYINT_SECONDS)) -keyint_min "$FPS" -sc_threshold 0 -bf 0
              -b:v "$VBR" -maxrate "$VBR" -bufsize "$VIDEO_BUFSIZE"
              -c:a aac -b:a "$ABR" -ar 44100 -ac 2 )
 
