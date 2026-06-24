@@ -156,10 +156,20 @@ fi
 # --- 5) ffmpeg で画面(x11grab)＋音声(FIFO)をキャプチャ → 配信/録画 ----
 # 同期は「ページ側の口パク遅延(LIPSYNC_LAG_MS)」で取る。映像は遅らせない
 # （映像を itsoffset すると配信冒頭が黒くなるため）。
+# BGM（ローファイ）を声の下にループ・低音量でミックス。BGM_FILE があれば有効。
+BGM_FILE="${BGM_FILE:-$WEB/assets/bgm/lofi_loop.mp3}"
+BGM_VOL="${BGM_VOL:-0.13}"
+BGM_IN=(); AUDIO_MAP=( -map 0:v:0 -map 1:a:0 )
+if [[ -f "$BGM_FILE" ]]; then
+  BGM_IN=( -stream_loop -1 -i "$BGM_FILE" )   # input2 = BGM(無限ループ)
+  AUDIO_MAP=( -filter_complex
+    "[1:a]aresample=44100[v];[2:a]aresample=44100,volume=${BGM_VOL}[b];[v][b]amix=inputs=2:duration=first:normalize=0[aout]"
+    -map 0:v:0 -map "[aout]" )
+  echo "[stream] BGM: $BGM_FILE (vol=$BGM_VOL)"
+fi
 COMMON_IN=( -thread_queue_size 1024 -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
-            "${AUDIO_IN[@]}" )
-# 映像=input0, 音声=input1 を明示マッピング。音声が確実に乗る。
-COMMON_ENC=( -map 0:v:0 -map 1:a:0
+            "${AUDIO_IN[@]}" "${BGM_IN[@]}" )
+COMMON_ENC=( "${AUDIO_MAP[@]}"
              -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
              -c:a aac -b:a "$ABR" -ar 44100 -ac 2 )
 
