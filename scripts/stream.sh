@@ -56,6 +56,7 @@ STREAM_KEY="${STREAM_KEY:-}"
 VBR="${VBR:-2800k}"; ABR="${ABR:-128k}"
 VIDEO_QUEUE_SIZE="${VIDEO_QUEUE_SIZE:-32}"
 AUDIO_QUEUE_SIZE="${AUDIO_QUEUE_SIZE:-256}"
+KEYINT_SECONDS="${KEYINT_SECONDS:-1}"
 RUN_FEEDER="${RUN_FEEDER:-1}"   # 0 にすると音声フィーダを起動しない（無音）
 FIFO="$VAR/audio.fifo"
 CHROME_NICE="${CHROME_NICE:-10}"
@@ -203,7 +204,9 @@ COMMON_ENC=( "${AUDIO_MAP[@]}"
              # CFR(固定フレームレート)で必ず毎秒 FPS 枚を送出する。software描画でグラブが
              # ムラになっても ffmpeg が複製して埋めるので「受信動画が少ない/バッファ」を防ぐ。
              -fps_mode cfr -r "$FPS" -max_muxing_queue_size 1024
-             -c:v libx264 -preset "$PRESET" -tune zerolatency -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
+             -c:v libx264 -preset "$PRESET" -tune zerolatency -pix_fmt yuv420p
+             -g $((FPS*KEYINT_SECONDS)) -keyint_min $((FPS*KEYINT_SECONDS)) -sc_threshold 0 -bf 0
+             -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
              -c:a aac -b:a "$ABR" -ar 44100 -ac 2 )
 
 if [[ "$MODE" == "live" ]]; then
