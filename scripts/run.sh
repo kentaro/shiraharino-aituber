@@ -41,6 +41,10 @@ trap term INT TERM
 
 # 汎用: コマンドを落ちても再起動し続ける監督ループ
 supervise() {
+  # run.sh の単一起動ロックは親プロセスだけが保持する。監督ループや
+  # その子に継承させると、親だけ落ちた時に stale lock で復旧できない。
+  exec 8>&-
+
   local name="$1"; shift
   local backoff=2
   while true; do
@@ -60,7 +64,7 @@ log "=== run start (MODE=${MODE:-record} content=$RUN_CONTENT) ==="
 
 if [[ "$START_VOICEVOX" == "1" && -x "$VOICEVOX_START" ]]; then
   log "[voicevox] ensure supervisor"
-  "$VOICEVOX_START" >>"$VAR/voicevox.log" 2>&1 || log "[voicevox] start failed rc=$?"
+  ( exec 8>&-; "$VOICEVOX_START" >>"$VAR/voicevox.log" 2>&1 ) || log "[voicevox] start failed rc=$?"
 fi
 
 if [[ "$RUN_CONTENT" == "1" ]]; then

@@ -106,13 +106,13 @@ if [[ -n "${SNAPSHOT_DIR:-}" ]]; then
 fi
 
 # --- 1) 配信ページを HTTP 配信 ----------------------------------------
-( cd "$WEB" && exec python3 -m http.server "$WEB_PORT" --bind 127.0.0.1 ) \
+( exec 7>&-; cd "$WEB" && exec python3 -m http.server "$WEB_PORT" --bind 127.0.0.1 ) \
   >"$VAR/web.log" 2>&1 &
 PIDS+=($!)
 sleep 1
 
 # --- 2) Xvfb 仮想ディスプレイ -----------------------------------------
-Xvfb ":$DISPLAY_NUM" -screen 0 "${WIDTH}x${HEIGHT}x24" -nolisten tcp \
+( exec 7>&-; Xvfb ":$DISPLAY_NUM" -screen 0 "${WIDTH}x${HEIGHT}x24" -nolisten tcp ) \
   >"$VAR/xvfb.log" 2>&1 &
 PIDS+=($!)
 export DISPLAY=":$DISPLAY_NUM"
@@ -124,7 +124,7 @@ if [[ "$RUN_FEEDER" == "1" ]]; then
   rm -f "$FIFO"; mkfifo "$FIFO"
   # フィーダは FIFO に書き込み（読み手= ffmpeg が開くまでブロック）。
   # -u でアンバッファ化し PCM を確実に流す。落ちても再起動。
-  ( cd "$ROOT"; while true; do SR=44100 CH=2 python3 -u scripts/audio_feeder.py > "$FIFO" 2>>"$VAR/feeder.log"; echo "[feeder] exited -> restart" >>"$VAR/feeder.log"; sleep 1; done ) &
+  ( exec 7>&-; cd "$ROOT"; while true; do SR=44100 CH=2 python3 -u scripts/audio_feeder.py > "$FIFO" 2>>"$VAR/feeder.log"; echo "[feeder] exited -> restart" >>"$VAR/feeder.log"; sleep 1; done ) &
   PIDS+=($!)
   # 生PCMはサンプル数でタイムスタンプ（rtmp向けに単調）。同期はページ側の lag で取る
   AUDIO_IN=( -thread_queue_size 1024 -f s16le -ar 44100 -ac 2 -i "$FIFO" )
@@ -137,7 +137,7 @@ fi
 # ソフトGLで chromium がたまにクラッシュしても配信を止めないよう、
 # キーパーループで落ちたら即再起動する（ffmpeg はそのまま流し続ける）。
 LIPSYNC_LAG_MS="${LIPSYNC_LAG_MS:-1800}"   # 口パク遅延(ms)。声と口を合わせる
-( while true; do
+( exec 7>&-; while true; do
     # 毎回フレッシュなプロフィールで起動（クラッシュ後の「profile error」ダイアログを防ぐ）
     rm -rf "$VAR/chrome-profile" 2>/dev/null
     nice -n "$CHROME_NICE" "$CHROME" \
@@ -169,7 +169,7 @@ sleep 5
 # 配信中の見え方を URL で確認できるようにする（運用・デバッグ用）。
 if [[ -n "${SNAPSHOT_DIR:-}" ]]; then
   mkdir -p "$SNAPSHOT_DIR"
-  ( while true; do
+  ( exec 7>&-; while true; do
       ffmpeg -y -loglevel error -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -i ":${DISPLAY_NUM}.0" \
         -frames:v 1 "$SNAPSHOT_DIR/frame.jpg" 2>/dev/null
       sleep "$SNAPSHOT_INTERVAL"
