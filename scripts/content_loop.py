@@ -116,13 +116,17 @@ def gen_gemini(theme, recent):
         return ""
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
            f"{GEMINI_MODEL}:generateContent?key={GEMINI_KEY}")
+    # thinkingBudget=0 で思考トークンを無効化（でないと思考がmaxOutputTokensを食い潰し
+    # 本文が途中で切れる）。本文だけを十分なトークンで返させる。
     req = urllib.request.Request(
         url,
         data=json.dumps({"contents": [{"parts": [{"text": _build_prompt(theme, recent)}]}],
-                         "generationConfig": {"temperature": 1.1, "maxOutputTokens": 200}}).encode(),
+                         "generationConfig": {"temperature": 1.1, "maxOutputTokens": 128,
+                                              "thinkingConfig": {"thinkingBudget": 0}}}).encode(),
         headers={"Content-Type": "application/json"})
     data = json.load(urllib.request.urlopen(req, timeout=40))
-    return _clean_line(data["candidates"][0]["content"]["parts"][0]["text"])
+    parts = data["candidates"][0]["content"].get("parts", [])
+    return _clean_line("".join(p.get("text", "") for p in parts))
 
 
 def generate_line(theme, recent):
