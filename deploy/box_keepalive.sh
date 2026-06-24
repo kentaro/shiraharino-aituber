@@ -19,6 +19,7 @@
 set -uo pipefail
 REPO=/opt/data/home/shiraharino-aituber
 SNAP=/opt/data/home/MotionPNGTuber_Player/live_snap
+VOICEVOX_START=/opt/data/scripts/voicevox-start.sh
 mkdir -p "$SNAP"
 
 # --- 単一インスタンス: このロックをデーモン稼働中ずっと保持する -------------
@@ -55,6 +56,13 @@ launch_once() {
   echo "$(date '+%T') git=$(git rev-parse --short HEAD 2>/dev/null) launched pid=$!" >> "$SNAP/keepalive.log"
 }
 
+ensure_voicevox() {
+  if [ -x "$VOICEVOX_START" ]; then
+    "$VOICEVOX_START" >> "$SNAP/voicevox.log" 2>&1 || \
+      echo "$(date '+%F %T') voicevox ensure failed rc=$?" >> "$SNAP/keepalive.log"
+  fi
+}
+
 # --- 監視ループ（このプロセスは常駐し、ロックを離さない） -----------------
 while true; do
   now=$(date +%s)
@@ -69,6 +77,7 @@ while true; do
   fi
   LATEST=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo x)
   RUNNING=$(cat "$SNAP/running_git" 2>/dev/null || echo none)
+  ensure_voicevox
 
   healthy=0
   if [ -f "$SNAP/frame.jpg" ]; then

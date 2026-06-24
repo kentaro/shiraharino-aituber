@@ -27,6 +27,8 @@ fi
 
 # content_loop を回すか（音声供給）。0 にすると playlist は外部供給前提。
 RUN_CONTENT="${RUN_CONTENT:-1}"
+START_VOICEVOX="${START_VOICEVOX:-1}"
+VOICEVOX_START="${VOICEVOX_START:-/opt/data/scripts/voicevox-start.sh}"
 
 pids=()
 term() {
@@ -55,6 +57,11 @@ supervise() {
 }
 
 log "=== run start (MODE=${MODE:-record} content=$RUN_CONTENT) ==="
+
+if [[ "$START_VOICEVOX" == "1" && -x "$VOICEVOX_START" ]]; then
+  log "[voicevox] ensure supervisor"
+  "$VOICEVOX_START" >>"$VAR/voicevox.log" 2>&1 || log "[voicevox] start failed rc=$?"
+fi
 
 if [[ "$RUN_CONTENT" == "1" ]]; then
   # content_loop は低優先度で（配信の描画/エンコードを最優先にしてVOICEVOX合成に食わせない）
