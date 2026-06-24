@@ -60,7 +60,7 @@ launch_once() {
   set -a; [ -f var/live.env ] && . var/live.env; set +a
   date +%s > "$SNAP/launched_at"
   MODE=live RUN_CONTENT="${RUN_CONTENT:-0}" SNAPSHOT_DIR="$SNAP" \
-    setsid bash scripts/run.sh > var/live.log 2>&1 < /dev/null &
+    setsid bash scripts/run.sh 9>&- > var/live.log 2>&1 < /dev/null &
   echo "$(date '+%T') git=$(git rev-parse --short HEAD 2>/dev/null) launched pid=$!" >> "$SNAP/keepalive.log"
 }
 
@@ -72,7 +72,7 @@ ensure_voicevox() {
   fi
   VOICEVOX_LAST_CHECK="$now_v"
   if [ -x "$VOICEVOX_START" ]; then
-    "$VOICEVOX_START" >> "$SNAP/voicevox.log" 2>&1 || \
+    "$VOICEVOX_START" 9>&- >> "$SNAP/voicevox.log" 2>&1 || \
       echo "$(date '+%F %T') voicevox ensure failed rc=$?" >> "$SNAP/keepalive.log"
   fi
 }
