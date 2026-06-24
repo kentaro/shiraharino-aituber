@@ -58,6 +58,7 @@ OUTPUT_FPS="${OUTPUT_FPS:-$FPS}"
 PRESET="${PRESET:-ultrafast}"   # 低スペック箱向け（CPU節約）
 RENDER_FPS="${RENDER_FPS:-$FPS}" # ブラウザ描画fps。YouTube送出fpsとは分離する。
 BODY_MOTION="${BODY_MOTION:-0}"   # 1 なら配信画面の全身揺れを有効化する。
+FRAME_HEARTBEAT="${FRAME_HEARTBEAT:-1}" # YouTube側の重複フレーム潰れを避ける微小マーカー
 DISPLAY_NUM="${DISPLAY_NUM:-99}"
 WEB_PORT="${WEB_PORT:-8780}"
 OUT_FILE="${OUT_FILE:-$VAR/record.mp4}"
@@ -234,18 +235,22 @@ if [[ -z "${BGM_FILE+x}" ]]; then
 fi
 BGM_VOL="${BGM_VOL:-0.13}"
 BGM_IN=()
-AV_FILTER_MAP=( -vf "fps=${FPS}" -map 0:v:0 -map 1:a:0 )
+VIDEO_FILTER="fps=${OUTPUT_FPS}"
+if [[ "$FRAME_HEARTBEAT" == "1" ]]; then
+  VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=0:y=0:w=2:h=2:color=white@0.08:t=fill:enable='not(mod(n,2))'"
+fi
+AV_FILTER_MAP=( -vf "$VIDEO_FILTER" -map 0:v:0 -map 1:a:0 )
 if [[ -f "$BGM_FILE" ]]; then
   # -re 必須: ファイル入力を実時間で読む。無いと最速デコードして muxer に溢れ
   # 「エンコーダがリアルタイムより高速」エラー＝バースト送出になる。
   BGM_IN=( -re -stream_loop -1 -i "$BGM_FILE" )   # input2 = BGM(無限ループ)
   AV_FILTER_MAP=( -filter_complex
-    "[0:v]fps=${OUTPUT_FPS}[vout];[1:a]aresample=44100[v];[2:a]aresample=44100,volume=${BGM_VOL}[b];[v][b]amix=inputs=2:duration=first:normalize=0[aout]"
+    "[0:v]${VIDEO_FILTER}[vout];[1:a]aresample=44100[v];[2:a]aresample=44100,volume=${BGM_VOL}[b];[v][b]amix=inputs=2:duration=first:normalize=0[aout]"
     -map "[vout]" -map "[aout]" )
   echo "[stream] BGM: $BGM_FILE (vol=$BGM_VOL)"
 fi
 if [[ ! -f "$BGM_FILE" ]]; then
-  AV_FILTER_MAP=( -vf "fps=${OUTPUT_FPS}" -map 0:v:0 -map 1:a:0 )
+  AV_FILTER_MAP=( -vf "$VIDEO_FILTER" -map 0:v:0 -map 1:a:0 )
 fi
 COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
             -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$GRAB_FPS" -i ":${DISPLAY_NUM}.0"
