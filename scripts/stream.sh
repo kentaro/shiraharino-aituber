@@ -239,6 +239,14 @@ VIDEO_FILTER="fps=${OUTPUT_FPS}"
 if [[ "$FRAME_HEARTBEAT" == "1" ]]; then
   VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=0:y=0:w=2:h=2:color=white@0.08:t=fill:enable='not(mod(n,2))'"
 fi
+FFMPEG_CLOCK_OVERLAY="${FFMPEG_CLOCK_OVERLAY:-0}"
+FFMPEG_CLOCK_FONT="${FFMPEG_CLOCK_FONT:-/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf}"
+if [[ "$FFMPEG_CLOCK_OVERLAY" == "1" ]]; then
+  CLOCK_TEXT_FILE="$VAR/clock_overlay.txt"
+  ( exec 7>&-; while true; do TZ=Asia/Tokyo date '+%H:%M:%S' > "$CLOCK_TEXT_FILE"; sleep 0.25; done ) &
+  PIDS+=($!)
+  VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=w-128:y=102:w=110:h=56:color=white@0.92:t=fill,drawtext=fontfile=${FFMPEG_CLOCK_FONT}:textfile=${CLOCK_TEXT_FILE}:reload=1:x=w-116:y=113:fontsize=24:fontcolor=0x2f3e57"
+fi
 AV_FILTER_MAP=( -vf "$VIDEO_FILTER" -map 0:v:0 -map 1:a:0 )
 if [[ -f "$BGM_FILE" ]]; then
   # -re 必須: ファイル入力を実時間で読む。無いと最速デコードして muxer に溢れ
