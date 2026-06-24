@@ -141,12 +141,10 @@
   }
   var DRAW_FPS = parseInt(new URLSearchParams(location.search).get("rfps") || "15", 10) || 15;
   var DRAW_INTERVAL = 1e3 / DRAW_FPS;
-  var lastDraw = 0;
+  var renderTimer = null;
   function render() {
-    requestAnimationFrame(render);
+    renderTimer = window.setTimeout(render, DRAW_INTERVAL);
     const now = performance.now();
-    if (now - lastDraw < DRAW_INTERVAL - 2) return;
-    lastDraw = now;
     if (followMode) sampleEnvelope();
     else sampleAudio();
     updateMouthState(now);
@@ -174,6 +172,10 @@
     }
     const vu = Math.min(100, Math.round(smoothedRms * 1400));
     vuFill.style.width = vu + "%";
+  }
+  function startRenderLoop() {
+    if (renderTimer !== null) return;
+    render();
   }
   function scheduleNextBlink(now) {
     nextBlinkAt = now + 1400 + Math.random() * 2400;
@@ -294,7 +296,7 @@
     scheduleNextBlink(performance.now());
     if (!rafStarted) {
       rafStarted = true;
-      requestAnimationFrame(render);
+      startRenderLoop();
     }
     await pollNowplaying();
     setInterval(pollNowplaying, 120);
@@ -320,7 +322,7 @@
     scheduleNextBlink(performance.now());
     if (!rafStarted) {
       rafStarted = true;
-      requestAnimationFrame(render);
+      startRenderLoop();
     }
     await fetchPlaylist();
     setInterval(fetchPlaylist, CFG.playlistPollMs);

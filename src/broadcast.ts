@@ -214,19 +214,15 @@ async function pollNowplaying(): Promise<void> {
 }
 
 // ---- 描画ループ（口オーバーレイのみ） --------------------------------
-// 描画を一定fpsに間引く。ヘッドレスchromiumのソフトウェア描画は重く、毎フレーム
-// (最大60fps)で口キャンバスを再描画すると3コア箱のCPUを食い潰し、ffmpegがリアルタイムに
-// 追いつけず「YouTubeの受信動画が少ない/バッファ」になる。配信は15fpsなので描画も15fpsで十分。
+// Xvfb/headless Chromium は requestAnimationFrame が実ディスプレイの vsync に
+// 乗れず大きく間引かれることがある。配信では timer 駆動で rfps を明示する。
 const DRAW_FPS = parseInt(new URLSearchParams(location.search).get("rfps") || "15", 10) || 15;
 const DRAW_INTERVAL = 1000 / DRAW_FPS;
-let lastDraw = 0;
+let renderTimer: number | null = null;
 
 function render(): void {
-  requestAnimationFrame(render);
+  renderTimer = window.setTimeout(render, DRAW_INTERVAL);
   const now = performance.now();
-  // 間引き: 前回描画から所定間隔未満なら重い処理をスキップ（rAF自体は軽い）
-  if (now - lastDraw < DRAW_INTERVAL - 2) return;
-  lastDraw = now;
   if (followMode) sampleEnvelope();
   else sampleAudio();
   updateMouthState(now);
@@ -264,6 +260,11 @@ function render(): void {
 
   const vu = Math.min(100, Math.round(smoothedRms * 1400));
   vuFill.style.width = vu + "%";
+}
+
+function startRenderLoop(): void {
+  if (renderTimer !== null) return;
+  render();
 }
 
 // ---- まばたき（ランダム間隔・たまに二度まばたき） -------------------
@@ -399,7 +400,7 @@ async function startFollow(): Promise<void> {
   scheduleNextBlink(performance.now());
   if (!rafStarted) {
     rafStarted = true;
-    requestAnimationFrame(render);
+    startRenderLoop();
   }
   await pollNowplaying();
   setInterval(pollNowplaying, 120);
@@ -431,7 +432,7 @@ async function start(): Promise<void> {
   scheduleNextBlink(performance.now());
   if (!rafStarted) {
     rafStarted = true;
-    requestAnimationFrame(render);
+    startRenderLoop();
   }
 
   await fetchPlaylist();
