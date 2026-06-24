@@ -21,7 +21,7 @@
   GAP_MS       セグメント間の無音    default: 320
   SR/CH        出力 PCM 形式         default: 44100 / 2
 """
-import os, sys, json, time, subprocess
+import os, sys, json, time, subprocess, threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SEGDIR = os.path.join(ROOT, "web", "segments")
@@ -61,6 +61,60 @@ def decode_pcm(wav_path):
                         "-f", "s16le", "-ar", str(SR), "-ac", str(CH), "-"],
                        capture_output=True)
     return p.stdout
+
+
+# ---- 先読みデコード（FIFOを途切れさせない） --------------------------------
+# 直列に「デコード→再生」すると、デコード(負荷下で~0.5s)の間FIFOが空になり配信ffmpegの
+# 音声入力がstall→A/Vで映像も止まる。そこで「次セグメントを再生中に裏スレッドで先読み
+# デコード」しておき、切替時は即PCMを渡す＝音声無切れ。
+# subprocess.run は ffmpeg 待機中GILを解放、write_paced も sleepでGILを解放するので並行する。
+_pf_lock = threading.Lock()
+_pf_done = {}          # id -> pcm（デコード完了済み）
+_pf_running = set()    # id -> 先読み中
+
+
+def _decode_into_cache(seg):
+    sid = seg.get("id")
+    wav = os.path.join(WEB, seg.get("audio", ""))
+    pcm = decode_pcm(wav) if os.path.exists(wav) else b""
+    with _pf_lock:
+        _pf_done[sid] = pcm
+        _pf_running.discard(sid)
+
+
+def ensure_prefetch(seg):
+    """seg のPCMを裏で先読み開始（未開始・未完了なら）"""
+    sid = seg.get("id")
+    wav = os.path.join(WEB, seg.get("audio", ""))
+    if not sid or not os.path.exists(wav):
+        return
+    with _pf_lock:
+        if sid in _pf_done or sid in _pf_running:
+            return
+        _pf_running.add(sid)
+    threading.Thread(target=_decode_into_cache, args=(seg,), daemon=True).start()
+
+
+def take_pcm(seg):
+    """seg のPCMを取得。先読み済みなら即時、未完了なら少し待ち、無ければ同期デコード。"""
+    sid = seg.get("id")
+    wav = os.path.join(WEB, seg.get("audio", ""))
+    for _ in range(40):  # 最大~0.8s 先読み完了を待つ
+        with _pf_lock:
+            if sid in _pf_done:
+                return _pf_done.pop(sid)
+            running = sid in _pf_running
+        if not running:
+            break
+        time.sleep(0.02)
+    return decode_pcm(wav) if os.path.exists(wav) else b""
+
+
+def _prune_prefetch(valid_ids):
+    """playlistから消えたidの先読みキャッシュを掃除（メモリリーク防止）"""
+    with _pf_lock:
+        for sid in [k for k in _pf_done if k not in valid_ids]:
+            _pf_done.pop(sid, None)
 
 
 def write_paced(pcm):
@@ -113,10 +167,15 @@ def main():
             write_done(sid)
             write_paced(silence_bytes(120))
             continue
-        pcm = decode_pcm(wav)
+        # 先読み済みPCMを即取得（無ければ同期デコード）
+        pcm = take_pcm(seg)
         dur_ms = int(len(pcm) / (SR * CH * BYTES_PER_SAMPLE) * 1000)
         set_nowplaying(seg, dur_ms)
         sys.stderr.write(f"[feeder] play {sid} ({dur_ms}ms) {seg.get('theme')} :: {seg.get('text')}\n")
+        # 再生する前に「次のセグメント」を裏で先読みデコード開始（再生中に完了させる）
+        if len(segs) > 1:
+            ensure_prefetch(segs[1])
+        _prune_prefetch({s.get("id") for s in segs})
         write_paced(pcm)
         write_paced(silence_bytes(GAP_MS))
         # 再生完了 → 合図。プロデューサがこの先頭を捨て、次の新鮮なセグメントを出す。
