@@ -66,7 +66,11 @@ PIDS=()
 cleanup() {
   echo "[stream] cleanup..."
   for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
-  pkill -f "Xvfb :$DISPLAY_NUM" 2>/dev/null || true
+  # キーパーループの子（chromium/feeder）も確実に始末（重複ingest防止）
+  pkill -9 -f "chrome-profile" 2>/dev/null || true
+  pkill -9 -f "audio_feeder" 2>/dev/null || true
+  pkill -9 -f "Xvfb :$DISPLAY_NUM" 2>/dev/null || true
+  pkill -9 -f "http.server $WEB_PORT" 2>/dev/null || true
   rm -f "$FIFO" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
@@ -90,32 +94,40 @@ sleep 1.5
 AUDIO_IN=( -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 )
 if [[ "$RUN_FEEDER" == "1" ]]; then
   rm -f "$FIFO"; mkfifo "$FIFO"
-  # フィーダは FIFO に書き込み（読み手= ffmpeg が開くまでブロック）
-  ( cd "$ROOT" && SR=44100 CH=2 python3 scripts/audio_feeder.py > "$FIFO" 2>"$VAR/feeder.log" ) &
+  # フィーダは FIFO に書き込み（読み手= ffmpeg が開くまでブロック）。
+  # -u でアンバッファ化し PCM を確実に流す。落ちても再起動。
+  ( cd "$ROOT"; while true; do SR=44100 CH=2 python3 -u scripts/audio_feeder.py > "$FIFO" 2>>"$VAR/feeder.log"; echo "[feeder] exited -> restart" >>"$VAR/feeder.log"; sleep 1; done ) &
   PIDS+=($!)
-  # 壁時計タイムスタンプで取り込み → x11grab(同じく壁時計)と同期する
-  AUDIO_IN=( -use_wallclock_as_timestamps 1 -f s16le -ar 44100 -ac 2 -i "$FIFO" )
+  # 生PCMはサンプル数でタイムスタンプ（rtmp向けに単調）。同期はページ側の lag で取る
+  AUDIO_IN=( -thread_queue_size 1024 -f s16le -ar 44100 -ac 2 -i "$FIFO" )
   echo "[stream] audio: feeder -> FIFO (PulseAudio不要)"
 else
   echo "[stream] audio: (none) 無音"
 fi
 
-# --- 4) chromium --kiosk で配信ページを描画（follow mode） ------------
+# --- 4) chromium --kiosk で配信ページを描画（follow mode・自動再起動） --
+# ソフトGLで chromium がたまにクラッシュしても配信を止めないよう、
+# キーパーループで落ちたら即再起動する（ffmpeg はそのまま流し続ける）。
 LIPSYNC_LAG_MS="${LIPSYNC_LAG_MS:-1800}"   # 口パク遅延(ms)。声と口を合わせる
-"$CHROME" \
-  --kiosk --start-fullscreen --no-first-run --no-default-browser-check \
-  --disable-infobars --disable-translate --lang=ja \
-  --disable-features=Translate,TranslateUI,TranslateSubFrames \
-  --no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox \
-  --disable-dev-shm-usage --no-zygote \
-  --use-gl=swiftshader --disable-gpu --mute-audio \
-  --disable-crash-reporter --disable-breakpad \
-  --window-size="${WIDTH},${HEIGHT}" --window-position=0,0 \
-  --user-data-dir="$VAR/chrome-profile" \
-  --app="http://127.0.0.1:${WEB_PORT}/index.html?follow=1&lag=${LIPSYNC_LAG_MS}" \
-  >"$VAR/chrome.log" 2>&1 &
+( while true; do
+    "$CHROME" \
+      --kiosk --start-fullscreen --no-first-run --no-default-browser-check \
+      --disable-infobars --disable-translate --lang=ja \
+      --disable-features=Translate,TranslateUI,TranslateSubFrames \
+      --no-sandbox --disable-setuid-sandbox --disable-gpu-sandbox \
+      --disable-dev-shm-usage \
+      --use-gl=swiftshader --disable-gpu --mute-audio \
+      --disable-crash-reporter --disable-breakpad \
+      --window-size="${WIDTH},${HEIGHT}" --window-position=0,0 \
+      --user-data-dir="$VAR/chrome-profile" \
+      --app="http://127.0.0.1:${WEB_PORT}/index.html?follow=1&lag=${LIPSYNC_LAG_MS}" \
+      >"$VAR/chrome.log" 2>&1
+    echo "[stream] chromium exited rc=$? -> relaunch" >&2
+    rm -rf "$VAR/chrome-profile/Singleton"* 2>/dev/null
+    sleep 2
+  done ) &
 PIDS+=($!)
-sleep 4
+sleep 5
 
 # --- 4.5) スナップショット（SNAPSHOT_DIR 指定時、配信中の画面を定期保存）---
 # 配信中の見え方を URL で確認できるようにする（運用・デバッグ用）。
@@ -132,14 +144,16 @@ fi
 # --- 5) ffmpeg で画面(x11grab)＋音声(FIFO)をキャプチャ → 配信/録画 ----
 # 同期は「ページ側の口パク遅延(LIPSYNC_LAG_MS)」で取る。映像は遅らせない
 # （映像を itsoffset すると配信冒頭が黒くなるため）。
-COMMON_IN=( -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
+COMMON_IN=( -thread_queue_size 1024 -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" )
-COMMON_ENC=( -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
-             -c:a aac -b:a "$ABR" -ar 44100 )
+# 映像=input0, 音声=input1 を明示マッピング。音声が確実に乗る。
+COMMON_ENC=( -map 0:v:0 -map 1:a:0
+             -c:v libx264 -preset veryfast -pix_fmt yuv420p -g $((FPS*2)) -b:v "$VBR" -maxrate "$VBR" -bufsize "$VBR"
+             -c:a aac -b:a "$ABR" -ar 44100 -ac 2 )
 
 if [[ "$MODE" == "live" ]]; then
   [[ -z "$STREAM_KEY" ]] && { echo "[stream] live は STREAM_KEY 必須" >&2; exit 1; }
-  echo "[stream] → YouTube Live (rtmps)"
+  echo "[stream] → YouTube Live: ${YT_URL}"
   ffmpeg -hide_banner -loglevel warning "${COMMON_IN[@]}" "${COMMON_ENC[@]}" \
     -f flv "${YT_URL}/${STREAM_KEY}"
 else
