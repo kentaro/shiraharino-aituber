@@ -110,6 +110,24 @@ def take_pcm(seg):
     return decode_pcm(wav) if os.path.exists(wav) else b""
 
 
+def take_pcm_continuous(seg):
+    """seg のPCMを取得する。デコード待ち中も無音を書き、FIFOを止めない。"""
+    sid = seg.get("id")
+    wav = os.path.join(WEB, seg.get("audio", ""))
+    if not sid or not os.path.exists(wav):
+        return b""
+    ensure_prefetch(seg)
+    while True:
+        with _pf_lock:
+            if sid in _pf_done:
+                return _pf_done.pop(sid)
+            running = sid in _pf_running
+        if not running:
+            # 先読みスレッドが例外等で消えた場合でも、同期デコードでFIFOを止めない。
+            ensure_prefetch(seg)
+        write_paced(silence_bytes(CHUNK_MS))
+
+
 def _prune_prefetch(valid_ids):
     """playlistから消えたidの先読みキャッシュを掃除（メモリリーク防止）"""
     with _pf_lock:
@@ -167,8 +185,8 @@ def main():
             write_done(sid)
             write_paced(silence_bytes(120))
             continue
-        # 先読み済みPCMを即取得（無ければ同期デコード）
-        pcm = take_pcm(seg)
+        # 先読み済みPCMを取得。未完了でも無音でFIFOを埋めながら待つ。
+        pcm = take_pcm_continuous(seg)
         dur_ms = int(len(pcm) / (SR * CH * BYTES_PER_SAMPLE) * 1000)
         set_nowplaying(seg, dur_ms)
         sys.stderr.write(f"[feeder] play {sid} ({dur_ms}ms) {seg.get('theme')} :: {seg.get('text')}\n")
