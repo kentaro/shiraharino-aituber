@@ -138,8 +138,14 @@
     } catch {
     }
   }
+  var DRAW_FPS = parseInt(new URLSearchParams(location.search).get("rfps") || "15", 10) || 15;
+  var DRAW_INTERVAL = 1e3 / DRAW_FPS;
+  var lastDraw = 0;
   function render() {
+    requestAnimationFrame(render);
     const now = performance.now();
+    if (now - lastDraw < DRAW_INTERVAL - 2) return;
+    lastDraw = now;
     if (followMode) sampleEnvelope();
     else sampleAudio();
     updateMouthState(now);
@@ -165,7 +171,6 @@
     }
     const vu = Math.min(100, Math.round(smoothedRms * 1400));
     vuFill.style.width = vu + "%";
-    requestAnimationFrame(render);
   }
   function scheduleNextBlink(now) {
     nextBlinkAt = now + 1400 + Math.random() * 2400;
