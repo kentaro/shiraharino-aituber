@@ -43,15 +43,21 @@ VOICE_UDP_PORT = os.environ.get("VOICE_UDP_PORT")
 class PcmOut:
     def __init__(self):
         self._udp = None
+        self._udp_addr = None
         if VOICE_UDP_HOST and VOICE_UDP_PORT:
             self._udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._udp.connect((VOICE_UDP_HOST, int(VOICE_UDP_PORT)))
+            self._udp_addr = (VOICE_UDP_HOST, int(VOICE_UDP_PORT))
 
     def write(self, data):
         if not data:
             return
         if self._udp:
-            self._udp.send(data)
+            try:
+                self._udp.sendto(data, self._udp_addr)
+            except OSError:
+                # ffmpeg may not be listening during startup/restart. Drop this
+                # small PCM packet and keep the live feeder running.
+                return
         else:
             sys.stdout.buffer.write(data)
 
