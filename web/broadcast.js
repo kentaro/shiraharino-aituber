@@ -29,6 +29,7 @@
   var bootBtn = $("boot-btn");
   var standbyEl = $("standby");
   var subtitleBox = $("subtitle");
+  var sparklesEl = $("sparkles");
   var track = [];
   var trackFps = 25;
   var srcW = 1254;
@@ -142,6 +143,39 @@
   var DRAW_FPS = parseInt(new URLSearchParams(location.search).get("rfps") || "15", 10) || 15;
   var DRAW_INTERVAL = 1e3 / DRAW_FPS;
   var renderTimer = null;
+  var sparkleTimer = null;
+  var sparklePalette = ["#ffffff", "#fef08a", "#bae6fd", "#fde68a", "#fbcfe8"];
+  function startSparkles() {
+    if (sparkleTimer !== null) return;
+    const count = followMode ? 28 : 18;
+    const nodes = [];
+    for (let i = 0; i < count; i++) {
+      const s = document.createElement("span");
+      s.className = "sparkle";
+      sparklesEl.appendChild(s);
+      nodes.push(s);
+    }
+    let tick = 0;
+    const update = () => {
+      tick++;
+      for (let i = 0; i < nodes.length; i++) {
+        const s = nodes[i];
+        const active = (tick + i * 2) % (4 + i % 5) < 2;
+        const x = 22 + (tick * (17 + i * 5) + i * 97) % 1230;
+        const y = 92 + (tick * (11 + i * 3) + i * 71) % 520;
+        const size = 4 + (tick + i) % 4 * 2;
+        const alpha = active ? 0.45 + (tick + i) % 3 * 0.18 : 0.08;
+        s.style.setProperty("--spark-x", `${x}px`);
+        s.style.setProperty("--spark-y", `${y}px`);
+        s.style.setProperty("--spark-size", `${size}px`);
+        s.style.setProperty("--spark-alpha", alpha.toFixed(2));
+        s.style.setProperty("--spark-rot", `${(tick * 19 + i * 37) % 180}deg`);
+        s.style.setProperty("--spark-color", sparklePalette[(tick + i) % sparklePalette.length]);
+      }
+      sparkleTimer = window.setTimeout(update, 90);
+    };
+    update();
+  }
   function render() {
     renderTimer = window.setTimeout(render, DRAW_INTERVAL);
     const now = performance.now();
@@ -175,6 +209,7 @@
   }
   function startRenderLoop() {
     if (renderTimer !== null) return;
+    startSparkles();
     render();
   }
   function scheduleNextBlink(now) {
