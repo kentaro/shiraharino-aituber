@@ -285,9 +285,11 @@ fi
 VIDEO_CLOCK_IN=()
 if [[ "$VIDEO_CLOCK_BASE" == "1" && ! -f "$BGM_FILE" ]]; then
   # x11grab can pause for seconds under Xvfb/chromium load. Keep a CFR video
-  # clock in ffmpeg and repeat the latest grabbed frame over it.
+  # clock in ffmpeg and repeat the latest grabbed frame over it. Reset both
+  # streams' PTS to frame-number time so stale x11grab timestamps cannot make
+  # video drift behind realtime audio.
   VIDEO_CLOCK_IN=( -f lavfi -i "color=c=0xeaf3fb:s=${WIDTH}x${HEIGHT}:r=${OUTPUT_FPS}" )
-  AV_FILTER_MAP=( -filter_complex "[2:v][0:v]overlay=shortest=0:repeatlast=1,${VIDEO_FILTER}[vout]" -map "[vout]" -map 1:a:0 )
+  AV_FILTER_MAP=( -filter_complex "[0:v]setpts=N/(${OUTPUT_FPS}*TB)[grab];[2:v]setpts=N/(${OUTPUT_FPS}*TB)[base];[base][grab]overlay=shortest=0:repeatlast=1,${VIDEO_FILTER}[vout]" -map "[vout]" -map 1:a:0 )
 fi
 COMMON_IN=( -fflags nobuffer -flags low_delay -thread_queue_size "$VIDEO_QUEUE_SIZE" -use_wallclock_as_timestamps 1
             -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$GRAB_FPS" -i ":${DISPLAY_NUM}.0"
