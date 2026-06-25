@@ -76,7 +76,7 @@ if [[ -z "${VIDEO_BUFSIZE:-}" ]]; then
     VIDEO_BUFSIZE="$VBR"
   fi
 fi
-VIDEO_QUEUE_SIZE="${VIDEO_QUEUE_SIZE:-180}"
+VIDEO_QUEUE_SIZE="${VIDEO_QUEUE_SIZE:-4}"
 AUDIO_QUEUE_SIZE="${AUDIO_QUEUE_SIZE:-256}"
 KEYINT_SECONDS="${KEYINT_SECONDS:-1}"
 RUN_FEEDER="${RUN_FEEDER:-1}"   # 0 にすると音声フィーダを起動しない（無音）
@@ -289,7 +289,7 @@ if [[ "$VIDEO_CLOCK_BASE" == "1" && ! -f "$BGM_FILE" ]]; then
   VIDEO_CLOCK_IN=( -f lavfi -i "color=c=0xeaf3fb:s=${WIDTH}x${HEIGHT}:r=${OUTPUT_FPS}" )
   AV_FILTER_MAP=( -filter_complex "[2:v][0:v]overlay=shortest=0:repeatlast=1,${VIDEO_FILTER}[vout]" -map "[vout]" -map 1:a:0 )
 fi
-COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
+COMMON_IN=( -fflags nobuffer -flags low_delay -thread_queue_size "$VIDEO_QUEUE_SIZE" -use_wallclock_as_timestamps 1
             -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$GRAB_FPS" -i ":${DISPLAY_NUM}.0"
             "${AUDIO_IN[@]}" "${BGM_IN[@]}" "${VIDEO_CLOCK_IN[@]}" )
 COMMON_ENC=( "${AV_FILTER_MAP[@]}"
