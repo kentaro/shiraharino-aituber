@@ -246,7 +246,12 @@ if [[ -z "${BGM_FILE+x}" ]]; then
 fi
 BGM_VOL="${BGM_VOL:-0.13}"
 BGM_IN=()
-VIDEO_FILTER="fps=${OUTPUT_FPS}"
+VIDEO_EDGE_CROP="${VIDEO_EDGE_CROP:-2}"
+if [[ "$VIDEO_EDGE_CROP" =~ ^[0-9]+$ && "$VIDEO_EDGE_CROP" -gt 0 ]]; then
+  VIDEO_FILTER="crop=iw-${VIDEO_EDGE_CROP}:ih-${VIDEO_EDGE_CROP}:0:0,scale=${WIDTH}:${HEIGHT}:flags=neighbor,fps=${OUTPUT_FPS}"
+else
+  VIDEO_FILTER="fps=${OUTPUT_FPS}"
+fi
 if [[ "$FRAME_HEARTBEAT" == "1" ]]; then
   if [[ "$FRAME_HEARTBEAT_MODE" == "sparkle" ]]; then
     SPARKLE_SIZE="${FRAME_SPARKLE_SIZE:-4}"
@@ -281,9 +286,8 @@ VIDEO_CLOCK_IN=()
 if [[ "$VIDEO_CLOCK_BASE" == "1" && ! -f "$BGM_FILE" ]]; then
   # x11grab can pause for seconds under Xvfb/chromium load. Keep a CFR video
   # clock in ffmpeg and repeat the latest grabbed frame over it.
-  VIDEO_EDGE_CROP="${VIDEO_EDGE_CROP:-2}"
   VIDEO_CLOCK_IN=( -f lavfi -i "color=c=0xeaf3fb:s=${WIDTH}x${HEIGHT}:r=${OUTPUT_FPS}" )
-  AV_FILTER_MAP=( -filter_complex "[0:v]crop=iw-${VIDEO_EDGE_CROP}:ih-${VIDEO_EDGE_CROP}:0:0,scale=${WIDTH}:${HEIGHT}:flags=neighbor[grab];[2:v][grab]overlay=shortest=0:repeatlast=1,${VIDEO_FILTER}[vout]" -map "[vout]" -map 1:a:0 )
+  AV_FILTER_MAP=( -filter_complex "[2:v][0:v]overlay=shortest=0:repeatlast=1,${VIDEO_FILTER}[vout]" -map "[vout]" -map 1:a:0 )
 fi
 COMMON_IN=( -thread_queue_size "$VIDEO_QUEUE_SIZE"
             -f x11grab -draw_mouse 0 -video_size "${WIDTH}x${HEIGHT}" -framerate "$GRAB_FPS" -i ":${DISPLAY_NUM}.0"
