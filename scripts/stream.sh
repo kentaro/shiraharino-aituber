@@ -59,6 +59,9 @@ PRESET="${PRESET:-ultrafast}"   # 低スペック箱向け（CPU節約）
 RENDER_FPS="${RENDER_FPS:-$FPS}" # ブラウザ描画fps。YouTube送出fpsとは分離する。
 BODY_MOTION="${BODY_MOTION:-0}"   # 1 なら配信画面の全身揺れを有効化する。
 FRAME_HEARTBEAT="${FRAME_HEARTBEAT:-1}" # YouTube側の重複フレーム潰れを避ける微小マーカー
+FRAME_HEARTBEAT_MODE="${FRAME_HEARTBEAT_MODE:-sparkle}" # dot | sparkle
+FRAME_HEARTBEAT_SIZE="${FRAME_HEARTBEAT_SIZE:-2}"
+FRAME_HEARTBEAT_ALPHA="${FRAME_HEARTBEAT_ALPHA:-0.08}"
 DISPLAY_NUM="${DISPLAY_NUM:-99}"
 WEB_PORT="${WEB_PORT:-8780}"
 OUT_FILE="${OUT_FILE:-$VAR/record.mp4}"
@@ -245,7 +248,20 @@ BGM_VOL="${BGM_VOL:-0.13}"
 BGM_IN=()
 VIDEO_FILTER="fps=${OUTPUT_FPS}"
 if [[ "$FRAME_HEARTBEAT" == "1" ]]; then
-  VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=0:y=0:w=2:h=2:color=white@0.08:t=fill:enable='not(mod(n,2))'"
+  if [[ "$FRAME_HEARTBEAT_MODE" == "sparkle" ]]; then
+    SPARKLE_SIZE="${FRAME_SPARKLE_SIZE:-4}"
+    SPARKLE_ALPHA="${FRAME_SPARKLE_ALPHA:-0.65}"
+    SPARKLE_X2=$(( WIDTH - SPARKLE_SIZE - 8 ))
+    SPARKLE_Y2=$(( HEIGHT - SPARKLE_SIZE - 88 ))
+    SPARKLE_X3=$(( WIDTH / 2 ))
+    SPARKLE_Y3=$(( HEIGHT - SPARKLE_SIZE - 18 ))
+    VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=8:y=14:w=${SPARKLE_SIZE}:h=${SPARKLE_SIZE}:color=white@${SPARKLE_ALPHA}:t=fill:enable='not(mod(n,2))'"
+    VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=${SPARKLE_X2}:y=54:w=${SPARKLE_SIZE}:h=${SPARKLE_SIZE}:color=0x7dd3fc@${SPARKLE_ALPHA}:t=fill:enable='not(mod(n+1,3))'"
+    VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=18:y=${SPARKLE_Y2}:w=${SPARKLE_SIZE}:h=${SPARKLE_SIZE}:color=0xfef08a@${SPARKLE_ALPHA}:t=fill:enable='not(mod(n+2,5))'"
+    VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=${SPARKLE_X3}:y=${SPARKLE_Y3}:w=${SPARKLE_SIZE}:h=${SPARKLE_SIZE}:color=white@${SPARKLE_ALPHA}:t=fill:enable='not(mod(n+3,7))'"
+  else
+    VIDEO_FILTER="${VIDEO_FILTER},drawbox=x=0:y=0:w=${FRAME_HEARTBEAT_SIZE}:h=${FRAME_HEARTBEAT_SIZE}:color=white@${FRAME_HEARTBEAT_ALPHA}:t=fill:enable='not(mod(n,2))'"
+  fi
 fi
 VIDEO_CLOCK_BASE="${VIDEO_CLOCK_BASE:-0}"
 AV_FILTER_MAP=( -vf "$VIDEO_FILTER" -map 0:v:0 -map 1:a:0 )
